@@ -277,8 +277,43 @@
     font-family:inherit;font-size:14px;color:var(--ink);background:var(--input-bg)}
   .op-add input:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,111,94,.14)}
 
-  @media (max-width:640px){
-    header{padding:12px 16px}.wrap{padding:16px}.col{width:82vw}
+  /* Touch: ações do card sempre visíveis (não existe hover) */
+  @media (hover:none){
+    .card-actions{opacity:1}
+  }
+
+  /* ---------- mobile ---------- */
+  @media (max-width:768px){
+    header{padding:10px 14px;gap:10px}
+    .brand-logo{height:26px}
+    .tabs{order:3;width:100%}
+    .tab{flex:1;padding:8px 10px;text-align:center}
+    .toolbar{gap:6px}
+    .user-pill #user-email{display:none}
+    .user-pill{max-width:none;padding:5px 10px 5px 6px}
+    .wrap{padding:14px}
+    .page-head h2{font-size:19px}
+    .proj-grid{grid-template-columns:1fr;gap:12px}
+    /* quadro: uma coluna por "página", swipe lateral com snap */
+    .board{gap:12px;margin:0 -14px;padding:0 14px 6px;
+      scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+    .col{width:84vw;scroll-snap-align:start}
+    .row{flex-direction:column;gap:14px}
+    .filters{gap:10px}
+    .filter{flex:1 1 46%}
+    .filter select{min-width:0;width:100%}
+    .agenda-row{flex-wrap:wrap;gap:10px;padding:12px 14px}
+    .agenda-main{flex:1 1 60%;min-width:0}
+    .op-row{flex-wrap:wrap;row-gap:8px}
+    /* modal vira folha ancorada embaixo, com rolagem própria */
+    .overlay{padding:0;align-items:flex-end}
+    .modal{max-width:none;border-radius:16px 16px 0 0;max-height:93vh;max-height:93dvh;overflow-y:auto}
+    /* 16px evita o zoom automático do iOS ao focar campos */
+    .field input,.field textarea,.field select,.filter select{font-size:16px}
+  }
+  @media (max-width:400px){
+    .col{width:92vw}
+    .filter{flex:1 1 100%}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
   :focus-visible{outline:2px solid var(--pine);outline-offset:2px}
