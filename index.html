@@ -97,6 +97,8 @@
   .proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
   .proj-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);
     border-top:4px solid var(--pine);padding:18px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:12px;position:relative}
+  .proj-card.dragging{opacity:.45}
+  .proj-card.drop-target{outline:2px dashed var(--pine);outline-offset:3px}
   .proj-card:hover{box-shadow:var(--shadow-lift);transform:translateY(-2px)}
   .proj-top{display:flex;align-items:flex-start;gap:10px}
   .proj-name{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:16.5px;margin:0;line-height:1.25;flex:1;word-break:break-word}
@@ -438,7 +440,8 @@
     if(pr.error||pj.error||tk.error||pa.error){ toast("Erro ao carregar dados"); console.error(pr.error||pj.error||tk.error||pa.error); return; }
     data.profiles=pr.data||[];
     data.access=pa.data||[];
-    data.projects=(pj.data||[]).map(p=>({...p,desc:p.description||"",subprojects:Array.isArray(p.subprojects)?p.subprojects:[]}));
+    data.projects=(pj.data||[]).map(p=>({...p,desc:p.description||"",subprojects:Array.isArray(p.subprojects)?p.subprojects:[]}))
+      .sort((a,b)=>((a.sort_order??0)-(b.sort_order??0)) || (a.created_at<b.created_at?-1:1));
     const byId={}; data.profiles.forEach(u=>byId[u.id]=u);
     data.tasks=(tk.data||[]).map(t=>({...t,desc:t.description||"",projectId:t.project_id,
       subprojectId:t.subproject_id||"",due:t.due||"",operator:(byId[t.operator_id]||{}).name||"—"}));
@@ -499,6 +502,7 @@
   // ui persistido (seções recolhidas)
   let ui={collapsed:{concluido:true}};
   try{ const raw=localStorage.getItem("organizador.ui"); if(raw){const u=JSON.parse(raw); if(u&&u.collapsed) ui=u;} }catch(e){}
+  ui.collapsed=ui.collapsed||{}; ui.collapsed.concluido=true; // concluídos sempre começam minimizados
   function saveUi(){ try{ localStorage.setItem("organizador.ui",JSON.stringify(ui)); }catch(e){} }
 
   // ---------- boot ----------
@@ -682,7 +686,29 @@
         ui.collapsed[g.status]=!ui.collapsed[g.status]; saveUi(); render();
       });
       const grid=sec.querySelector(".proj-grid");
-      items.forEach(p=>grid.appendChild(projCardEl(p)));
+      const reorderable=isAdmin() && (g.status==="ativo"||g.status==="pausado");
+      items.forEach(p=>{
+        const c=projCardEl(p);
+        if(reorderable){
+          c.draggable=true;
+          c.addEventListener("dragstart",e=>{e.dataTransfer.setData("text/proj",p.id);e.dataTransfer.effectAllowed="move";c.classList.add("dragging");});
+          c.addEventListener("dragend",()=>c.classList.remove("dragging"));
+          c.addEventListener("dragover",e=>{if([...e.dataTransfer.types].includes("text/proj")){e.preventDefault();c.classList.add("drop-target");}});
+          c.addEventListener("dragleave",()=>c.classList.remove("drop-target"));
+          c.addEventListener("drop",async e=>{
+            e.preventDefault(); c.classList.remove("drop-target");
+            const srcId=e.dataTransfer.getData("text/proj");
+            const src=items.find(x=>x.id===srcId);
+            if(!src||srcId===p.id) return;
+            const order=items.filter(x=>x.id!==srcId);
+            order.splice(order.findIndex(x=>x.id===p.id),0,src);
+            const results=await Promise.all(order.map((x,i)=>sb.from("projects").update({sort_order:i}).eq("id",x.id)));
+            const bad=results.find(r=>r.error);
+            if(!dbErr(bad&&bad.error)) await refresh();
+          });
+        }
+        grid.appendChild(c);
+      });
       if(g.status==="ativo" && isAdmin()){
         const tile=el(`<button class="new-tile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -1156,7 +1182,7 @@
       status:document.getElementById("f-status").value,color:modal.color};
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
-    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[]})); }
+    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length})); }
     if(!dbErr(error)){ toast(modal.id?"Projeto atualizado":"Projeto criado"); closeModal(); await refresh(); }
   });
 
