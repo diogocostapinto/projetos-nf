@@ -373,7 +373,7 @@
 
   // ---------- state ----------
   let sb=null, session=null, me=null;
-  let data={profiles:[],projects:[],tasks:[]};
+  let data={profiles:[],projects:[],tasks:[],access:[]};
   let state={view:"projects",projectId:null,sector:"overview",filterProject:"all",filterOperator:"all",filterPrio:"all",filterSector:"all"};
   let modal={type:null,id:null,ctx:null,color:null};
   let authMode="login";
@@ -381,17 +381,20 @@
   const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length>20;
   const isAdmin = ()=> me && me.role==="admin";
   const canEditTask = t => isAdmin() || (me && t.operator_id===me.id);
+  const canManageProject = p => isAdmin() || (p && p.private && me && p.owner_id===me.id);
   const activeProfiles = ()=> data.profiles.filter(u=>u.approved||u.role==="admin");
 
   // ---------- data access ----------
   async function loadAll(){
-    const [pr,pj,tk]=await Promise.all([
+    const [pr,pj,tk,pa]=await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("projects").select("*"),
-      sb.from("tasks").select("*")
+      sb.from("tasks").select("*"),
+      sb.from("project_access").select("*")
     ]);
-    if(pr.error||pj.error||tk.error){ toast("Erro ao carregar dados"); console.error(pr.error||pj.error||tk.error); return; }
+    if(pr.error||pj.error||tk.error||pa.error){ toast("Erro ao carregar dados"); console.error(pr.error||pj.error||tk.error||pa.error); return; }
     data.profiles=pr.data||[];
+    data.access=pa.data||[];
     data.projects=(pj.data||[]).map(p=>({...p,desc:p.description||"",subprojects:Array.isArray(p.subprojects)?p.subprojects:[]}));
     const byId={}; data.profiles.forEach(u=>byId[u.id]=u);
     data.tasks=(tk.data||[]).map(t=>({...t,desc:t.description||"",projectId:t.project_id,
@@ -591,9 +594,10 @@
     const next=ts.filter(t=>t.col!=="done"&&t.due).sort((a,b)=>a.due<b.due?-1:1)[0];
     const nd=next?dueInfo(next.due):null;
     const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
-      ${isAdmin()?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
+      ${canManageProject(p)?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
       <div class="proj-top">
         <h3 class="proj-name">${esc(p.name)}</h3>
+        ${p.private?`<span class="chip" title="Só você e admins veem">🔒</span>`:""}
         <span class="status ${p.status}">${{ativo:"Ativo",pausado:"Pausado",concluido:"Concluído"}[p.status]}</span>
       </div>
       ${p.desc?`<p class="proj-desc">${esc(p.desc)}</p>`:""}
@@ -637,10 +641,10 @@
       });
       const grid=sec.querySelector(".proj-grid");
       items.forEach(p=>grid.appendChild(projCardEl(p)));
-      if(g.status==="ativo" && isAdmin()){
+      if(g.status==="ativo"){
         const tile=el(`<button class="new-tile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Novo projeto</button>`);
+          ${isAdmin()?"Novo projeto":"Novo projeto privado"}</button>`);
         tile.addEventListener("click",()=>openProject(null));
         grid.appendChild(tile);
       }
@@ -675,13 +679,14 @@
     const head=el(`<div class="page-head">
       <span class="dot" style="width:14px;height:14px;background:${p.color}"></span>
       <h2>${esc(p.name)}</h2>
+      ${p.private?`<span class="chip" title="Só você e admins veem">🔒 privado</span>`:""}
       <span class="status ${p.status}">${{ativo:"Ativo",pausado:"Pausado",concluido:"Concluído"}[p.status]}</span>
       <div style="margin-left:auto;display:flex;gap:8px">
-        ${isAdmin()?`<button class="btn sm" id="edit-proj">Editar projeto</button>
+        ${canManageProject(p)?`<button class="btn sm" id="edit-proj">Editar projeto</button>
         <button class="btn sm primary" id="new-task">＋ Nova tarefa</button>`:""}
       </div></div>`);
     root.appendChild(head);
-    if(isAdmin()){
+    if(canManageProject(p)){
       head.querySelector("#edit-proj").addEventListener("click",()=>openProject(p.id));
       head.querySelector("#new-task").addEventListener("click",()=>openTask(null,{projectId:p.id,col:"todo",subprojectId:newTaskSub()}));
     }
@@ -718,7 +723,7 @@
       const body=col.querySelector(".col-body");
       if(!items.length) body.appendChild(el(`<div class="empty">Sem tarefas aqui.</div>`));
       items.forEach(t=>body.appendChild(cardEl(t,{showSector})));
-      if(isAdmin()){
+      if(canManageProject(p)){
         const add=el(`<button class="add-card">＋ Adicionar tarefa</button>`);
         add.addEventListener("click",()=>openTask(null,{projectId:p.id,col:s.id,subprojectId:newTaskSub()}));
         body.appendChild(add);
@@ -747,7 +752,7 @@
       const nd=next?dueInfo(next.due):null;
       const late=lateCount(ts);
       const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
-        ${(editable&&isAdmin())?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
+        ${(editable&&canManageProject(p))?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
         <div class="proj-top"><h3 class="proj-name">${esc(name)}</h3></div>
         <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
         <div class="proj-meta"><span>${done}/${ts.length} concluídas</span>
@@ -761,7 +766,7 @@
     };
     p.subprojects.forEach(s=>grid.appendChild(sectorCardEl(s.id,s.name,true)));
     if(tasksOf(p.id).some(t=>!t.subprojectId)) grid.appendChild(sectorCardEl("none","Sem setor",false));
-    if(isAdmin()){
+    if(canManageProject(p)){
       const tile=el(`<button class="new-tile">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Novo setor</button>`);
@@ -788,7 +793,7 @@
     const card=el(`<article class="card p-${t.prio} ${done?"is-done":""}" draggable="${mine}" data-id="${t.id}">
       <div class="card-actions">
         ${mine?`<button class="icon-btn" data-act="edit" title="Editar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>`:""}
-        ${isAdmin()?`<button class="icon-btn" data-act="del" title="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3m-8 0l1 13h8l1-13"/></svg></button>`:""}
+        ${canManageProject(proj)?`<button class="icon-btn" data-act="del" title="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3m-8 0l1 13h8l1-13"/></svg></button>`:""}
       </div>
       <div class="card-row">
         ${mine?`<button class="check ${done?"done":""}" data-act="check" title="${done?"Reabrir":"Concluir"}">${done?CHECK_SVG:""}</button>`:""}
@@ -805,7 +810,7 @@
       card.querySelector('[data-act="check"]').addEventListener("click",e=>{e.stopPropagation();toggleDone(t);});
       card.querySelector('[data-act="edit"]').addEventListener("click",()=>openTask(t.id));
     }
-    if(isAdmin()){
+    if(canManageProject(proj)){
       card.querySelector('[data-act="del"]').addEventListener("click",async()=>{
         if(confirm(`Excluir "${t.title}"?`)){
           const {error}=await sb.from("tasks").delete().eq("id",t.id);
@@ -925,13 +930,15 @@
     const adm=isAdmin();
     const cur=t||{title:"",desc:"",due:"",prio:"media",col:ctx.col||"todo",
       projectId:ctx.projectId||data.projects[0]?.id,subprojectId:ctx.subprojectId||"",operator_id:me?me.id:null};
+    const canMg=canManageProject(projById(cur.projectId));
     const lock=adm?"":"disabled";
+    const lockSub=(adm||canMg)?"":"disabled";
     mBody.innerHTML=`
       <div class="field"><label>Título</label><input id="f-title" type="text" maxlength="120" value="${esc(cur.title)}" placeholder="Ex.: Enviar proposta"></div>
       <div class="field"><label>Descrição</label><textarea id="f-desc" placeholder="Detalhes, links…">${esc(cur.desc||"")}</textarea></div>
       <div class="row">
         <div class="field"><label>Projeto</label><select id="f-proj" ${lock}>${data.projects.map(p=>`<option value="${p.id}" ${p.id===cur.projectId?"selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
-        <div class="field"><label>Setor</label><select id="f-sub" ${lock}>${sectorOptions(cur.projectId,cur.subprojectId)}</select></div>
+        <div class="field"><label>Setor</label><select id="f-sub" ${lockSub}>${sectorOptions(cur.projectId,cur.subprojectId)}</select></div>
         <div class="field"><label>Operador</label><select id="f-op" ${lock}>
           ${activeProfiles().map(u=>`<option value="${u.id}" ${u.id===cur.operator_id?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
       </div>
@@ -944,13 +951,13 @@
         <div class="field"><label>Situação</label><select id="f-col">
           ${STAGES.map(s=>`<option value="${s.id}" ${s.id===cur.col?"selected":""}>${s.title}</option>`).join("")}</select></div>
       </div>
-      ${adm?"":`<p class="op-hint">Projeto, setor e operador só podem ser alterados pelo administrador.</p>`}`;
+      ${adm?"":(canMg?`<p class="op-hint">Projeto privado: as tarefas aqui são suas; você pode mudar o setor.</p>`:`<p class="op-hint">Projeto, setor e operador só podem ser alterados pelo administrador.</p>`)}`;
     if(adm){
       mBody.querySelector("#f-proj").addEventListener("change",e=>{
         mBody.querySelector("#f-sub").innerHTML=sectorOptions(e.target.value,"");
       });
     }
-    btnDelete.style.display=(id&&adm)?"block":"none";
+    btnDelete.style.display=(id&&(adm||canMg))?"block":"none";
     openOverlay(); setTimeout(()=>{const e=document.getElementById("f-title");if(e)e.focus();},40);
   }
 
@@ -969,7 +976,8 @@
   function openProject(id){
     modal={type:"project",id,color:(id?projById(id).color:pickProjectColor())};
     mTitle.textContent=id?"Editar projeto":"Novo projeto";
-    const p=id?projById(id):{name:"",desc:"",status:"ativo"};
+    const p=id?projById(id):{name:"",desc:"",status:"ativo",private:!isAdmin()};
+    const privLock=isAdmin()?"":"disabled";
     mBody.innerHTML=`
       <div class="field"><label>Nome do projeto</label><input id="f-name" type="text" maxlength="80" value="${esc(p.name)}" placeholder="Ex.: Lançamento do site"></div>
       <div class="field"><label>Descrição</label><textarea id="f-pdesc" placeholder="Objetivo do projeto…">${esc(p.desc||"")}</textarea></div>
@@ -980,7 +988,11 @@
           <option value="concluido" ${p.status==="concluido"?"selected":""}>Concluído</option></select></div>
         <div class="field"><label>Cor ${id?"":"(automática)"}</label>
           <div class="color-pick"><span class="color-dot" id="f-color" style="background:${modal.color}"></span></div></div>
-      </div>`;
+      </div>
+      <label class="field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="f-priv" ${p.private?"checked":""} ${privLock}>
+        <span>🔒 Privado — só ${isAdmin()?"o dono":"você"} e admins veem</span></label>
+      ${isAdmin()?"":`<p class="op-hint">Projetos criados por você são sempre privados. Projetos de equipe são criados pelo administrador.</p>`}`;
     btnDelete.style.display=id?"block":"none";
     openOverlay(); setTimeout(()=>{const e=document.getElementById("f-name");if(e)e.focus();},40);
   }
@@ -994,7 +1006,8 @@
       const actions=isAdmin() && u.role!=="admin" && (!me||u.id!==me.id)
         ? (pending
             ? `<button class="btn sm" data-approve="${u.id}">Aprovar</button>`
-            : `<button class="btn sm" data-revoke="${u.id}">Revogar</button>`)
+            : `<button class="btn sm" data-access="${u.id}">${u.access_all?"Vê tudo":"Restrito"}</button>
+               <button class="btn sm" data-revoke="${u.id}">Revogar</button>`)
         : "";
       return `<div class="op-row">
         <span class="op" style="background:${opColor(u)}">${esc(initials(u.name))}</span>
@@ -1014,6 +1027,42 @@
       const {error}=await sb.from("profiles").update({approved:false}).eq("id",b.dataset.revoke);
       if(!dbErr(error)){ toast("Acesso revogado"); await loadAll(); openTeam(); }
     }));
+    mBody.querySelectorAll("[data-access]").forEach(b=>b.addEventListener("click",()=>openAccess(b.dataset.access)));
+    btnDelete.style.display="none";
+    document.getElementById("btn-save").textContent="Fechar";
+    document.getElementById("btn-cancel").style.display="none";
+    openOverlay();
+  }
+
+  function openAccess(uid){
+    const u=data.profiles.find(x=>x.id===uid); if(!u) return;
+    modal={type:"access",id:uid};
+    mTitle.textContent=`Projetos que ${u.name} vê`;
+    const grants=new Set(data.access.filter(a=>a.profile_id===uid).map(a=>a.project_id));
+    const shared=data.projects.filter(p=>!p.private);
+    mBody.innerHTML=`
+      <label class="field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="acc-all" ${u.access_all?"checked":""}>
+        <span>Vê <strong>todos</strong> os projetos de equipe</span></label>
+      <div id="acc-list" style="${u.access_all?"opacity:.4;pointer-events:none":""}">
+        ${shared.length?shared.map(p=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer">
+          <input type="checkbox" data-grant="${p.id}" ${grants.has(p.id)?"checked":""}>
+          <span class="dot" style="width:10px;height:10px;background:${p.color}"></span>
+          <span>${esc(p.name)}</span></label>`).join(""):`<p class="op-hint">Nenhum projeto de equipe ainda.</p>`}
+      </div>
+      <p class="op-hint">Com "todos" desligado, este operador só vê os projetos marcados acima (as mudanças valem na hora). Projetos privados não aparecem aqui: só o dono e admins os veem.</p>`;
+    mBody.querySelector("#acc-all").addEventListener("change",async e=>{
+      const {error}=await sb.from("profiles").update({access_all:e.target.checked}).eq("id",uid);
+      if(!dbErr(error)){ await loadAll(); openAccess(uid); }
+    });
+    mBody.querySelectorAll("[data-grant]").forEach(cb=>cb.addEventListener("change",async()=>{
+      const pid=cb.dataset.grant;
+      const {error}=cb.checked
+        ? await sb.from("project_access").insert({project_id:pid,profile_id:uid})
+        : await sb.from("project_access").delete().eq("project_id",pid).eq("profile_id",uid);
+      if(dbErr(error)){ cb.checked=!cb.checked; return; }
+      await loadAll();
+    }));
     btnDelete.style.display="none";
     document.getElementById("btn-save").textContent="Fechar";
     document.getElementById("btn-cancel").style.display="none";
@@ -1029,7 +1078,7 @@
   }
 
   document.getElementById("btn-save").addEventListener("click",async()=>{
-    if(modal.type==="team"){ closeModal(); return; }
+    if(modal.type==="team"||modal.type==="access"){ closeModal(); return; }
     if(modal.type==="sector"){
       const name=document.getElementById("f-sname").value.trim();
       if(!name){toast("Dê um nome ao setor");return;}
@@ -1052,12 +1101,17 @@
         prio:document.getElementById("f-prio").value,
         col:document.getElementById("f-col").value
       };
+      const projectId=document.getElementById("f-proj").value, proj=projById(projectId);
       if(adm){
-        const projectId=document.getElementById("f-proj").value, proj=projById(projectId);
         let sub=document.getElementById("f-sub").value;
         if(sub && !(proj.subprojects||[]).some(s=>s.id===sub)) sub="";
         fields.project_id=projectId; fields.subproject_id=sub;
         fields.operator_id=document.getElementById("f-op").value||null;
+      }else if(canManageProject(proj)){
+        let sub=document.getElementById("f-sub").value;
+        if(sub && !(proj.subprojects||[]).some(s=>s.id===sub)) sub="";
+        fields.project_id=projectId; fields.subproject_id=sub;
+        fields.operator_id=me.id;
       }
       let error;
       if(modal.id){ ({error}=await sb.from("tasks").update(fields).eq("id",modal.id)); }
@@ -1068,8 +1122,13 @@
     // project
     const name=document.getElementById("f-name").value.trim();
     if(!name){toast("Dê um nome ao projeto");return;}
+    const priv=isAdmin()?document.getElementById("f-priv").checked:true;
     const fields={name,description:document.getElementById("f-pdesc").value.trim(),
-      status:document.getElementById("f-status").value,color:modal.color};
+      status:document.getElementById("f-status").value,color:modal.color,private:priv};
+    if(priv){
+      const curOwner=modal.id?(projById(modal.id)||{}).owner_id:null;
+      fields.owner_id=curOwner||me.id;
+    }
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
     else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[]})); }
