@@ -14,12 +14,9 @@ Gerenciador de projetos da Quanta: quadro Kanban com projetos, setores (subproje
 
 Conta nova entra como **pendente**: a pessoa consegue se cadastrar e fazer login, mas não vê nenhum projeto, tarefa ou membro da equipe até um **admin** aprovar (botão *Aprovar* na tela Equipe — ou revogar depois, pelo mesmo lugar).
 
-O que cada aprovado enxerga é controlado em duas camadas:
+O que cada aprovado enxerga é controlado pelo **escopo por operador**: por padrão o operador vê todos os projetos; na tela Equipe o admin pode restringir (botão *Vê tudo / Restrito*) e marcar só os projetos liberados para aquela pessoa. Projetos só o admin cria.
 
-- **Escopo por operador** — por padrão o operador vê todos os projetos de equipe; na tela Equipe o admin pode restringir (botão *Vê tudo / Restrito*) e marcar só os projetos liberados para aquela pessoa.
-- **Projetos privados** — qualquer usuário aprovado pode criar um projeto **privado** (🔒): só o dono e os admins o veem, incluindo as tarefas. O dono gerencia setores e tarefas do próprio projeto privado, mas não consegue torná-lo público. Projetos de equipe (visíveis) só o admin cria.
-
-Em qualquer projeto que o operador **vê**, ele pode **criar tarefas** (escolhendo setor e responsável) e **mudar a situação** de qualquer tarefa (concluir, reabrir, mover de coluna). O conteúdo (título, descrição, prazo, prioridade) só é editável pelo responsável da tarefa — que ainda assim não reatribui projeto/setor/responsável — e excluir tarefa é só admin ou dono do projeto privado. O **admin** vê tudo — inclusive projetos privados dos outros —, aprova/revoga acessos, define escopos e cria, edita e exclui qualquer coisa. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface.
+Em qualquer projeto que o operador **vê**, ele pode **criar tarefas** (escolhendo setor e responsável) e **mudar a situação** de qualquer tarefa (concluir, reabrir, mover de coluna). O conteúdo (título, descrição, prazo, prioridade) só é editável pelo responsável da tarefa — que ainda assim não reatribui projeto/setor/responsável — e excluir tarefa é só admin. O **admin** vê tudo, aprova/revoga acessos, define escopos e cria, edita e exclui qualquer coisa. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface.
 
 ## Como publicar (do zero)
 

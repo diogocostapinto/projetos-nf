@@ -4,10 +4,8 @@
 -- Modelo de permissão: contas novas nascem PENDENTES e não veem nada
 -- até um admin aprovar. Aprovado vê os projetos de equipe conforme seu
 -- escopo: "todos" (padrão) ou apenas os projetos liberados pelo admin.
--- Qualquer aprovado pode criar projetos PRIVADOS (só o dono e admins
--- veem, com tarefas e tudo). Quem vê um projeto cria tarefas nele e
--- muda a situação de qualquer tarefa; o responsável edita o conteúdo
--- das suas (sem reatribuir) e o dono do privado gerencia tudo nele;
+-- Quem vê um projeto cria tarefas nele e muda a situação de qualquer
+-- tarefa; o responsável edita o conteúdo das suas (sem reatribuir);
 -- admin vê e edita tudo.
 -- Este arquivo é idempotente: pode ser re-executado numa base existente.
 -- ============================================================
@@ -49,14 +47,9 @@ create table if not exists public.projects (
   color text not null default '#2F6F5E',
   status text not null default 'ativo' check (status in ('ativo','pausado','concluido')),
   subprojects jsonb not null default '[]',
-  owner_id uuid references public.profiles(id) on delete set null,
-  private boolean not null default false,
   created_at timestamptz not null default now()
 );
 
--- Base existente: adiciona colunas novas se ainda não existirem
-alter table public.projects add column if not exists owner_id uuid references public.profiles(id) on delete set null;
-alter table public.projects add column if not exists private boolean not null default false;
 
 -- ---------- Acesso por projeto (quando o operador não vê "todos") ----------
 create table if not exists public.project_access (
@@ -94,29 +87,18 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ---------- Função auxiliar: usuário atual pode VER este projeto? ----------
--- Admin vê tudo; projeto privado só o dono; projeto de equipe exige
--- aprovação e escopo (vê todos, ou tem liberação específica).
+-- Admin vê tudo; os demais precisam de aprovação e escopo
+-- (vê todos, ou tem liberação específica em project_access).
 create or replace function public.can_view_project(pid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin()
-      or exists (
-        select 1 from public.projects p
-        where p.id = pid
-          and ( (p.private and p.owner_id = auth.uid())
-             or ( not p.private and public.is_approved() and (
-                    exists (select 1 from public.profiles pr where pr.id = auth.uid() and pr.access_all)
-                 or exists (select 1 from public.project_access a
-                            where a.project_id = pid and a.profile_id = auth.uid())
-             )) )
-      );
+      or ( public.is_approved() and (
+             exists (select 1 from public.profiles pr where pr.id = auth.uid() and pr.access_all)
+          or exists (select 1 from public.project_access a
+                     where a.project_id = pid and a.profile_id = auth.uid())
+      ));
 $$;
 
--- ---------- Função auxiliar: usuário atual é DONO deste projeto privado? ----------
-create or replace function public.owns_private_project(pid uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.projects p
-                 where p.id = pid and p.private and p.owner_id = auth.uid());
-$$;
 
 -- ---------- Proteção: só admin altera papel e aprovação ----------
 -- Sem isso, qualquer usuário poderia se autopromover a admin pela API
@@ -141,6 +123,14 @@ create trigger protect_profile_fields
   before update on public.profiles
   for each row execute function public.protect_profile_fields();
 
+-- ---------- Limpeza da antiga lógica de projeto privado ----------
+-- (ordem importa: políticas dependem das colunas, então saem antes)
+drop policy if exists projects_owner_private on public.projects;
+drop policy if exists tasks_private_owner on public.tasks;
+drop function if exists public.owns_private_project(uuid);
+alter table public.projects drop column if exists private;
+alter table public.projects drop column if exists owner_id;
+
 -- ---------- Row Level Security ----------
 alter table public.profiles       enable row level security;
 alter table public.projects       enable row level security;
@@ -159,10 +149,8 @@ create policy profiles_update_own on public.profiles
   using (id = auth.uid() or public.is_admin())
   with check (id = auth.uid() or public.is_admin());
 
--- Projetos: leitura conforme visibilidade (admin tudo; privado só o dono;
--- equipe conforme escopo); admin cria/edita/exclui qualquer um;
--- aprovado gerencia os PRÓPRIOS projetos privados (e não consegue
--- torná-los públicos — o with check exige private = true)
+-- Projetos: leitura conforme escopo (admin tudo; operador vê todos
+-- ou apenas os liberados); apenas admin cria/edita/exclui
 drop policy if exists projects_select on public.projects;
 create policy projects_select on public.projects
   for select to authenticated using (public.can_view_project(id));
@@ -171,12 +159,6 @@ drop policy if exists projects_admin_write on public.projects;
 create policy projects_admin_write on public.projects
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
-
-drop policy if exists projects_owner_private on public.projects;
-create policy projects_owner_private on public.projects
-  for all to authenticated
-  using (private and owner_id = auth.uid() and public.is_approved())
-  with check (private and owner_id = auth.uid() and public.is_approved());
 
 -- Acesso por projeto: admin gerencia; cada um pode ler as próprias liberações
 drop policy if exists project_access_select on public.project_access;
@@ -189,19 +171,12 @@ create policy project_access_admin_write on public.project_access
   using (public.is_admin()) with check (public.is_admin());
 
 -- Tarefas: leitura segue a visibilidade do projeto; admin faz tudo;
--- dono de projeto privado gerencia as tarefas dele; quem VÊ o projeto
--- pode criar tarefas e atualizar (o trigger abaixo limita o quê:
--- responsável edita conteúdo sem reatribuir; os demais só mudam a
--- situação/coluna). Excluir continua com admin e dono do privado.
+-- quem VÊ o projeto pode criar tarefas e atualizar (o trigger abaixo
+-- limita o quê: responsável edita conteúdo sem reatribuir; os demais
+-- só mudam a situação/coluna). Excluir é só admin.
 drop policy if exists tasks_select on public.tasks;
 create policy tasks_select on public.tasks
   for select to authenticated using (public.can_view_project(project_id));
-
-drop policy if exists tasks_private_owner on public.tasks;
-create policy tasks_private_owner on public.tasks
-  for all to authenticated
-  using (public.is_approved() and public.owns_private_project(project_id))
-  with check (public.is_approved() and public.owns_private_project(project_id));
 
 drop policy if exists tasks_admin_all on public.tasks;
 create policy tasks_admin_all on public.tasks
@@ -222,13 +197,13 @@ create policy tasks_update_visible on public.tasks
   with check (public.is_approved() and public.can_view_project(project_id));
 
 -- ---------- Proteção: o que cada um pode ALTERAR numa tarefa ----------
--- Admin e dono do projeto privado: tudo. Responsável pela tarefa:
--- conteúdo, mas não reatribui projeto/setor/responsável. Demais
--- usuários que veem o projeto: apenas a situação (coluna).
+-- Admin: tudo. Responsável pela tarefa: conteúdo, mas não reatribui
+-- projeto/setor/responsável. Demais usuários que veem o projeto:
+-- apenas a situação (coluna).
 create or replace function public.protect_task_fields()
 returns trigger language plpgsql as $$
 begin
-  if auth.uid() is null or public.is_admin() or public.owns_private_project(old.project_id) then
+  if auth.uid() is null or public.is_admin() then
     return new;
   end if;
   if old.operator_id = auth.uid() then
