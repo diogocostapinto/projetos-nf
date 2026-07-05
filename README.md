@@ -19,7 +19,7 @@ O que cada aprovado enxerga é controlado em duas camadas:
 - **Escopo por operador** — por padrão o operador vê todos os projetos de equipe; na tela Equipe o admin pode restringir (botão *Vê tudo / Restrito*) e marcar só os projetos liberados para aquela pessoa.
 - **Projetos privados** — qualquer usuário aprovado pode criar um projeto **privado** (🔒): só o dono e os admins o veem, incluindo as tarefas. O dono gerencia setores e tarefas do próprio projeto privado, mas não consegue torná-lo público. Projetos de equipe (visíveis) só o admin cria.
 
-Cada **operador** só consegue atualizar as tarefas em que é o responsável (concluir, mover de coluna, editar conteúdo — sem reatribuir projeto/setor/responsável). O **admin** vê tudo — inclusive projetos privados dos outros —, aprova/revoga acessos, define escopos e cria, edita e exclui qualquer coisa. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface.
+Em qualquer projeto que o operador **vê**, ele pode **criar tarefas** (escolhendo setor e responsável) e **mudar a situação** de qualquer tarefa (concluir, reabrir, mover de coluna). O conteúdo (título, descrição, prazo, prioridade) só é editável pelo responsável da tarefa — que ainda assim não reatribui projeto/setor/responsável — e excluir tarefa é só admin ou dono do projeto privado. O **admin** vê tudo — inclusive projetos privados dos outros —, aprova/revoga acessos, define escopos e cria, edita e exclui qualquer coisa. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface.
 
 ## Como publicar (do zero)
 

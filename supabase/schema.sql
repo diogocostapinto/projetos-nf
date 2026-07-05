@@ -5,8 +5,10 @@
 -- até um admin aprovar. Aprovado vê os projetos de equipe conforme seu
 -- escopo: "todos" (padrão) ou apenas os projetos liberados pelo admin.
 -- Qualquer aprovado pode criar projetos PRIVADOS (só o dono e admins
--- veem, com tarefas e tudo). Operador edita apenas as próprias tarefas
--- e gerencia os próprios projetos privados; admin vê e edita tudo.
+-- veem, com tarefas e tudo). Quem vê um projeto cria tarefas nele e
+-- muda a situação de qualquer tarefa; o responsável edita o conteúdo
+-- das suas (sem reatribuir) e o dono do privado gerencia tudo nele;
+-- admin vê e edita tudo.
 -- Este arquivo é idempotente: pode ser re-executado numa base existente.
 -- ============================================================
 
@@ -187,8 +189,10 @@ create policy project_access_admin_write on public.project_access
   using (public.is_admin()) with check (public.is_admin());
 
 -- Tarefas: leitura segue a visibilidade do projeto; admin faz tudo;
--- dono de projeto privado gerencia as tarefas dele;
--- operador ATUALIZA apenas as suas
+-- dono de projeto privado gerencia as tarefas dele; quem VÊ o projeto
+-- pode criar tarefas e atualizar (o trigger abaixo limita o quê:
+-- responsável edita conteúdo sem reatribuir; os demais só mudam a
+-- situação/coluna). Excluir continua com admin e dono do privado.
 drop policy if exists tasks_select on public.tasks;
 create policy tasks_select on public.tasks
   for select to authenticated using (public.can_view_project(project_id));
@@ -205,10 +209,52 @@ create policy tasks_admin_all on public.tasks
   using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists tasks_operator_update_own on public.tasks;
-create policy tasks_operator_update_own on public.tasks
+
+drop policy if exists tasks_insert_visible on public.tasks;
+create policy tasks_insert_visible on public.tasks
+  for insert to authenticated
+  with check (public.is_approved() and public.can_view_project(project_id));
+
+drop policy if exists tasks_update_visible on public.tasks;
+create policy tasks_update_visible on public.tasks
   for update to authenticated
-  using (operator_id = auth.uid() and public.is_approved())
-  with check (operator_id = auth.uid() and public.is_approved());
+  using (public.is_approved() and public.can_view_project(project_id))
+  with check (public.is_approved() and public.can_view_project(project_id));
+
+-- ---------- Proteção: o que cada um pode ALTERAR numa tarefa ----------
+-- Admin e dono do projeto privado: tudo. Responsável pela tarefa:
+-- conteúdo, mas não reatribui projeto/setor/responsável. Demais
+-- usuários que veem o projeto: apenas a situação (coluna).
+create or replace function public.protect_task_fields()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is null or public.is_admin() or public.owns_private_project(old.project_id) then
+    return new;
+  end if;
+  if old.operator_id = auth.uid() then
+    if new.project_id    is distinct from old.project_id
+       or new.subproject_id is distinct from old.subproject_id
+       or new.operator_id   is distinct from old.operator_id then
+      raise exception 'Apenas administradores podem reatribuir projeto, setor ou responsável';
+    end if;
+    return new;
+  end if;
+  if new.title          is distinct from old.title
+     or new.description is distinct from old.description
+     or new.due          is distinct from old.due
+     or new.prio         is distinct from old.prio
+     or new.project_id   is distinct from old.project_id
+     or new.subproject_id is distinct from old.subproject_id
+     or new.operator_id  is distinct from old.operator_id then
+    raise exception 'Em tarefas de outros, você só pode mudar a situação';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists protect_task_fields on public.tasks;
+create trigger protect_task_fields
+  before update on public.tasks
+  for each row execute function public.protect_task_fields();
 
 -- ---------- Tempo real ----------
 -- Faz o app de todos atualizar sozinho quando algo muda
