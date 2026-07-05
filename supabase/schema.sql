@@ -75,10 +75,13 @@ $$;
 -- ---------- Proteção: só admin altera papel e aprovação ----------
 -- Sem isso, qualquer usuário poderia se autopromover a admin pela API
 -- (as políticas de RLS não restringem colunas individuais).
+-- Quando auth.uid() é nulo (SQL Editor do painel, service role), libera —
+-- é assim que o primeiro admin é promovido.
 create or replace function public.protect_profile_fields()
 returns trigger language plpgsql as $$
 begin
-  if (new.role is distinct from old.role or new.approved is distinct from old.approved)
+  if auth.uid() is not null
+     and (new.role is distinct from old.role or new.approved is distinct from old.approved)
      and not public.is_admin() then
     raise exception 'Apenas administradores podem alterar papel ou aprovação';
   end if;
