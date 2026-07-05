@@ -12,7 +12,7 @@ Gerenciador de projetos da Quanta: quadro Kanban com projetos, setores (subproje
 
 ## Modelo de permissões
 
-Todos os usuários autenticados **veem tudo**. Cada **operador** só consegue atualizar as tarefas em que é o responsável (concluir, mover de coluna, editar conteúdo — sem reatribuir projeto/setor/responsável). O **admin** cria, edita e exclui qualquer coisa: projetos, setores, tarefas e atribuições. As regras são aplicadas no servidor (RLS), não apenas escondidas na interface.
+Conta nova entra como **pendente**: a pessoa consegue se cadastrar e fazer login, mas não vê nenhum projeto, tarefa ou membro da equipe até um **admin** aprovar (botão *Aprovar* na tela Equipe — ou revogar depois, pelo mesmo lugar). Usuários **aprovados** veem tudo. Cada **operador** só consegue atualizar as tarefas em que é o responsável (concluir, mover de coluna, editar conteúdo — sem reatribuir projeto/setor/responsável). O **admin** aprova/revoga acessos e cria, edita e exclui qualquer coisa: projetos, setores, tarefas e atribuições. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação), não apenas escondidas na interface.
 
 ## Como publicar (do zero)
 
@@ -23,9 +23,11 @@ Todos os usuários autenticados **veem tudo**. Cada **operador** só consegue at
    - **Netlify / Vercel / Cloudflare Pages**: arraste o `index.html` (ou conecte o repositório para deploy automático a cada push).
 4. **Primeiro acesso** — abra o site, crie sua conta ("Criar conta"). Depois, no SQL Editor do Supabase, torne-se admin (uma única vez):
    ```sql
-   update public.profiles set role = 'admin' where email = 'seu@email.com';
+   update public.profiles set role = 'admin', approved = true where email = 'seu@email.com';
    ```
-5. **Equipe** — cada operador cria a própria conta na tela de login com o email de trabalho. Ao entrar, já aparece na Equipe e pode receber tarefas.
+5. **Equipe** — cada operador cria a própria conta na tela de login com o email de trabalho e fica **aguardando aprovação**. O admin abre a tela *Equipe* no site e clica em *Aprovar* — a tela do operador libera sozinha, e ele passa a aparecer nas atribuições de tarefas.
+
+> **Atualizando uma base que já existia** (criada com a versão anterior deste schema): basta re-executar o `supabase/schema.sql` inteiro no SQL Editor — ele é idempotente. Depois aprove os operadores existentes pela tela Equipe (ou via `update public.profiles set approved = true where email = '...'`).
 
 ## Sobre a chave no código
 

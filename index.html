@@ -381,6 +381,7 @@
   const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length>20;
   const isAdmin = ()=> me && me.role==="admin";
   const canEditTask = t => isAdmin() || (me && t.operator_id===me.id);
+  const activeProfiles = ()=> data.profiles.filter(u=>u.approved||u.role==="admin");
 
   // ---------- data access ----------
   async function loadAll(){
@@ -397,7 +398,7 @@
       subprojectId:t.subproject_id||"",due:t.due||"",operator:(byId[t.operator_id]||{}).name||"—"}));
     me=byId[session.user.id]||null;
   }
-  async function refresh(){ await loadAll(); render(); }
+  async function refresh(){ if(!session) return; await loadAll(); routeAfterLoad(); }
   function dbErr(e){ if(e){ toast(e.message&&/policy|denied|permission/i.test(e.message)?"Sem permissão para essa ação":"Erro ao salvar"); console.error(e); return true; } return false; }
 
   // ---------- helpers ----------
@@ -468,18 +469,24 @@
   async function onSession(){
     if(!session){ headerEl.style.display="none"; renderAuth(); return; }
     await loadAll();
+    ensureRealtime();
+    routeAfterLoad();
+  }
+  function ensureRealtime(){
+    if(realtimeOn) return;
+    realtimeOn=true;
+    sb.channel("db-changes")
+      .on("postgres_changes",{event:"*",schema:"public"},()=>{
+        clearTimeout(rtTimer); rtTimer=setTimeout(refresh,400);
+      }).subscribe();
+  }
+  function routeAfterLoad(){
+    if(!me || (me.role!=="admin" && !me.approved)){ headerEl.style.display="none"; renderPending(); return; }
     headerEl.style.display="";
     document.getElementById("user-email").textContent=(me&&me.name)||session.user.email;
     document.getElementById("user-avatar").textContent=initials((me&&me.name)||session.user.email);
     document.getElementById("user-avatar").style.background=opColor((me&&me.name)||session.user.email);
     document.getElementById("user-role").textContent=isAdmin()?"admin":"operador";
-    if(!realtimeOn){
-      realtimeOn=true;
-      sb.channel("db-changes")
-        .on("postgres_changes",{event:"*",schema:"public"},()=>{
-          clearTimeout(rtTimer); rtTimer=setTimeout(refresh,400);
-        }).subscribe();
-    }
     render();
   }
 
@@ -529,12 +536,25 @@
           const name=(card.querySelector("#a-name").value||"").trim()||email.split("@")[0];
           const {error}=await sb.auth.signUp({email,password:pass,options:{data:{name}}});
           if(error){ err.textContent="Não foi possível criar a conta: "+error.message; err.classList.add("show"); }
-          else{ authMode="login"; renderAuth("Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa de entrada antes de entrar."); }
+          else{ authMode="login"; renderAuth("Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa de entrada antes de entrar. Depois de entrar, aguarde um administrador liberar seu acesso."); }
         }
       }catch(e){ err.textContent="Falha de conexão. Verifique a internet e a configuração."; err.classList.add("show"); }
     };
     card.querySelector("#a-go").addEventListener("click",go);
     card.querySelector("#a-pass").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+  }
+
+  function renderPending(){
+    viewEl.innerHTML="";
+    const card=el(`<div class="auth-wrap"><div class="auth-card">
+      <h2 class="auth-title">Aguardando aprovação</h2>
+      <p class="auth-sub">Sua conta foi criada, mas um administrador ainda precisa liberar seu acesso. Esta tela atualiza sozinha assim que a liberação acontecer.</p>
+      <button class="btn primary" id="p-check" style="justify-content:center">Verificar agora</button>
+      <button class="auth-switch" id="p-logout">Sair</button>
+    </div></div>`);
+    viewEl.appendChild(card);
+    card.querySelector("#p-check").addEventListener("click",refresh);
+    card.querySelector("#p-logout").addEventListener("click",async()=>{ await sb.auth.signOut(); });
   }
 
   document.getElementById("btn-logout").addEventListener("click",async()=>{ await sb.auth.signOut(); });
@@ -826,7 +846,7 @@
       </select></div>
       <div class="filter"><label>Operador</label><select id="flt-op">
         <option value="all">Todos os operadores</option>
-        ${data.profiles.map(u=>`<option value="${u.id}" ${state.filterOperator===u.id?"selected":""}>${esc(u.name)}</option>`).join("")}
+        ${activeProfiles().map(u=>`<option value="${u.id}" ${state.filterOperator===u.id?"selected":""}>${esc(u.name)}</option>`).join("")}
       </select></div>
       <div class="filter"><label>Prioridade</label><select id="flt-prio">
         <option value="all">Todas as prioridades</option>
@@ -913,7 +933,7 @@
         <div class="field"><label>Projeto</label><select id="f-proj" ${lock}>${data.projects.map(p=>`<option value="${p.id}" ${p.id===cur.projectId?"selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
         <div class="field"><label>Setor</label><select id="f-sub" ${lock}>${sectorOptions(cur.projectId,cur.subprojectId)}</select></div>
         <div class="field"><label>Operador</label><select id="f-op" ${lock}>
-          ${data.profiles.map(u=>`<option value="${u.id}" ${u.id===cur.operator_id?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
+          ${activeProfiles().map(u=>`<option value="${u.id}" ${u.id===cur.operator_id?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
       </div>
       <div class="row">
         <div class="field"><label>Prazo</label><input id="f-due" type="date" value="${cur.due||""}"></div>
@@ -970,16 +990,30 @@
     mTitle.textContent="Equipe";
     const rows=data.profiles.map(u=>{
       const count=data.tasks.filter(t=>t.operator_id===u.id).length;
+      const pending=u.role!=="admin" && !u.approved;
+      const actions=isAdmin() && u.role!=="admin" && (!me||u.id!==me.id)
+        ? (pending
+            ? `<button class="btn sm" data-approve="${u.id}">Aprovar</button>`
+            : `<button class="btn sm" data-revoke="${u.id}">Revogar</button>`)
+        : "";
       return `<div class="op-row">
         <span class="op" style="background:${opColor(u)}">${esc(initials(u.name))}</span>
         <span class="op-name">${esc(u.name)}${me&&u.id===me.id?' <span class="op-you">você</span>':''}</span>
-        <span class="role-tag">${u.role==="admin"?"admin":"operador"}</span>
-        <span class="op-count">${count} tarefa(s)</span>
+        <span class="role-tag">${u.role==="admin"?"admin":(pending?"pendente":"operador")}</span>
+        <span class="op-count">${count} tarefa(s)</span>${actions}
       </div>`;
     }).join("");
     mBody.innerHTML=`
-      <p class="op-hint">Cada operador cria a própria conta na tela de login (botão "Criar conta"), usando o email de trabalho. Assim que entrar, aparece aqui e pode receber tarefas.${isAdmin()?" Para promover alguém a admin, use o painel do Supabase.":""}</p>
+      <p class="op-hint">Cada operador cria a própria conta na tela de login (botão "Criar conta"), usando o email de trabalho. A conta entra como <strong>pendente</strong> e só passa a ver o conteúdo depois que um admin aprovar aqui.${isAdmin()?" Para promover alguém a admin, use o painel do Supabase.":""}</p>
       <div class="team-list">${rows}</div>`;
+    mBody.querySelectorAll("[data-approve]").forEach(b=>b.addEventListener("click",async()=>{
+      const {error}=await sb.from("profiles").update({approved:true}).eq("id",b.dataset.approve);
+      if(!dbErr(error)){ toast("Acesso liberado"); await loadAll(); openTeam(); }
+    }));
+    mBody.querySelectorAll("[data-revoke]").forEach(b=>b.addEventListener("click",async()=>{
+      const {error}=await sb.from("profiles").update({approved:false}).eq("id",b.dataset.revoke);
+      if(!dbErr(error)){ toast("Acesso revogado"); await loadAll(); openTeam(); }
+    }));
     btnDelete.style.display="none";
     document.getElementById("btn-save").textContent="Fechar";
     document.getElementById("btn-cancel").style.display="none";
