@@ -930,12 +930,15 @@
     head.querySelector("#ag-month").addEventListener("click",()=>{state.agendaView="month";render();});
     root.appendChild(head);
 
-    if(state.filterProject!=="all" && !data.projects.find(p=>p.id===state.filterProject)) state.filterProject="all";
+    const isKindFilter=v=>v==="kind:normal"||v==="kind:dev";
+    if(state.filterProject!=="all" && !isKindFilter(state.filterProject) && !data.projects.find(p=>p.id===state.filterProject)) state.filterProject="all";
     if(state.filterOperator!=="all" && !data.profiles.find(u=>u.id===state.filterOperator)) state.filterOperator="all";
 
     const secOpts=[];
-    if(state.filterProject==="all"){
-      data.projects.forEach(p=>p.subprojects.forEach(s=>secOpts.push({id:s.id,label:`${p.name} › ${s.name}`})));
+    if(state.filterProject==="all"||isKindFilter(state.filterProject)){
+      const k=state.filterProject==="kind:dev"?"dev":state.filterProject==="kind:normal"?"normal":null;
+      data.projects.filter(p=>!k||(p.kind||"normal")===k)
+        .forEach(p=>p.subprojects.forEach(s=>secOpts.push({id:s.id,label:`${p.name} › ${s.name}`})));
     }else{
       const p=projById(state.filterProject);
       (p?p.subprojects:[]).forEach(s=>secOpts.push({id:s.id,label:s.name}));
@@ -947,6 +950,8 @@
     const bar=el(`<div class="filters">
       <div class="filter"><label>Projeto</label><select id="flt-proj">
         <option value="all">Todos os projetos</option>
+        <option value="kind:normal" ${state.filterProject==="kind:normal"?"selected":""}>Somente Projetos</option>
+        <option value="kind:dev" ${state.filterProject==="kind:dev"?"selected":""}>Somente Desenvolvimento</option>
         ${(()=>{
           const opt=p=>`<option value="${p.id}" ${state.filterProject===p.id?"selected":""}>${esc(p.name)}</option>`;
           const norm=data.projects.filter(p=>(p.kind||"normal")!=="dev");
@@ -980,7 +985,9 @@
     root.appendChild(bar);
 
     let pend=data.tasks.filter(t=>t.col!=="done");
-    if(state.filterProject!=="all") pend=pend.filter(t=>t.projectId===state.filterProject);
+    if(state.filterProject==="kind:normal") pend=pend.filter(t=>((projById(t.projectId)||{}).kind||"normal")!=="dev");
+    else if(state.filterProject==="kind:dev") pend=pend.filter(t=>(projById(t.projectId)||{}).kind==="dev");
+    else if(state.filterProject!=="all") pend=pend.filter(t=>t.projectId===state.filterProject);
     if(state.filterSector==="none") pend=pend.filter(t=>!t.subprojectId);
     else if(state.filterSector!=="all") pend=pend.filter(t=>t.subprojectId===state.filterSector);
     if(state.filterOperator!=="all") pend=pend.filter(t=>t.operator_id===state.filterOperator);
