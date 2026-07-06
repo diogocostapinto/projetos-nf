@@ -86,6 +86,8 @@
   .page-head{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
   .page-head h2{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-weight:300;font-size:22px;margin:0;letter-spacing:-.01em}
   .page-head .sub{color:var(--muted);font-size:13.5px}
+  .proj-about{color:var(--muted);font-size:14px;line-height:1.55;margin:-8px 0 20px;max-width:760px;white-space:pre-wrap;word-break:break-word}
+  .proj-about a{color:var(--pine-deep);font-weight:700;text-decoration:underline;text-underline-offset:2px}
   .crumb{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-bottom:14px}
   .crumb a{color:var(--pine-deep);font-weight:700;text-decoration:none;cursor:pointer}
   .crumb a:hover{text-decoration:underline}
@@ -786,6 +788,8 @@
     if(isAdmin()) head.querySelector("#edit-proj").addEventListener("click",()=>openProject(p.id));
     head.querySelector("#new-task").addEventListener("click",()=>openTask(null,{projectId:p.id,col:"todo",subprojectId:newTaskSub()}));
 
+    if(p.desc&&p.desc.trim()) root.appendChild(el(`<p class="proj-about">${linkify(p.desc)}</p>`));
+
     const bar=el(`<div class="sector-bar"></div>`);
     const chip=(label,key)=>{
       const b=el(`<button class="sector-chip ${state.sector===key?"active":""}">${label}</button>`);
@@ -1332,6 +1336,13 @@
   // ---------- misc helpers ----------
   function el(html){const t=document.createElement("template");t.innerHTML=html.trim();return t.content.firstElementChild;}
   function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  // Escapa o texto e transforma URLs (http/https ou www.) em links clicáveis
+  function linkify(s){
+    return esc(s).replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/g,url=>{
+      const href=url.startsWith("http")?url:"https://"+url;
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    });
+  }
   let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");
     clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2400);}
 
