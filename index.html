@@ -256,6 +256,22 @@
   .sector-chip.add{border-style:dashed;color:var(--muted)}
   .sec-tag{background:var(--column);color:var(--muted)}
 
+  /* ---------- agenda: calendário ---------- */
+  .cal-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .cal-title{font-size:16px;font-weight:700;margin:0;min-width:170px;text-align:center}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-dow{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:center;padding:2px 0}
+  .cal-cell{background:var(--surface);border-radius:8px;min-height:96px;padding:6px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;gap:3px;overflow:hidden}
+  .cal-cell.empty{background:transparent;box-shadow:none}
+  .cal-day{font-size:11.5px;font-weight:700;color:var(--muted)}
+  .cal-cell.today{outline:2px solid var(--pine)}
+  .cal-cell.today .cal-day{color:var(--pine-deep)}
+  .cal-pill{border:none;color:#fff;font-size:10.5px;font-weight:700;text-align:left;border-radius:5px;padding:2px 6px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;cursor:pointer}
+  .cal-pill.late{box-shadow:inset 0 0 0 1.5px var(--late-tx)}
+  .cal-more{font-size:10px;color:var(--muted);font-weight:700}
+
   /* ---------- agenda filters ---------- */
   .filters{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:22px}
   .filter label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;letter-spacing:.02em}
@@ -309,6 +325,12 @@
     .modal{max-width:none;border-radius:16px 16px 0 0;max-height:93vh;max-height:93dvh;overflow-y:auto}
     /* 16px evita o zoom automático do iOS ao focar campos */
     .field input,.field textarea,.field select,.filter select{font-size:16px}
+    /* calendário compacto: pílulas viram barrinhas coloridas */
+    .cal-grid{gap:3px}
+    .cal-cell{min-height:58px;padding:4px;border-radius:6px}
+    .cal-pill{font-size:0;height:7px;padding:0;border-radius:3px}
+    .cal-more{font-size:9px}
+    .cal-title{min-width:0;flex:1}
   }
   @media (max-width:400px){
     .col{width:92vw}
@@ -417,7 +439,7 @@
   // ---------- state ----------
   let sb=null, session=null, me=null;
   let data={profiles:[],projects:[],tasks:[],access:[]};
-  let state={view:"projects",projectId:null,sector:"overview",filterProject:"all",filterOperator:"all",filterPrio:"all",filterSector:"all"};
+  let state={view:"projects",projectId:null,sector:"overview",filterProject:"all",filterOperator:"all",filterPrio:"all",filterSector:"all",agendaView:"list",agendaMonth:null};
   let modal={type:null,id:null,ctx:null,color:null};
   let authMode="login";
 
@@ -883,8 +905,16 @@
 
   // ---------- view: agenda ----------
   function renderAgenda(root){
-    root.appendChild(el(`<div class="page-head"><h2>Agenda</h2>
-      <span class="sub">tarefas pendentes, por prazo</span></div>`));
+    const isMonth=state.agendaView==="month";
+    const head=el(`<div class="page-head"><h2>Agenda</h2>
+      <span class="sub">${isMonth?"tarefas pendentes no calendário":"tarefas pendentes, por prazo"}</span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="sector-chip ${isMonth?"":"active"}" id="ag-list">Lista</button>
+        <button class="sector-chip ${isMonth?"active":""}" id="ag-month">Mês</button>
+      </div></div>`);
+    head.querySelector("#ag-list").addEventListener("click",()=>{state.agendaView="list";render();});
+    head.querySelector("#ag-month").addEventListener("click",()=>{state.agendaView="month";render();});
+    root.appendChild(head);
 
     if(state.filterProject!=="all" && !data.projects.find(p=>p.id===state.filterProject)) state.filterProject="all";
     if(state.filterOperator!=="all" && !data.profiles.find(u=>u.id===state.filterOperator)) state.filterOperator="all";
@@ -936,6 +966,8 @@
     if(state.filterOperator!=="all") pend=pend.filter(t=>t.operator_id===state.filterOperator);
     if(state.filterPrio!=="all") pend=pend.filter(t=>t.prio===state.filterPrio);
 
+    if(state.agendaView==="month"){ renderCalendar(root,pend); return; }
+
     const groups=[
       {key:"late",title:"Atrasado",test:diff=>diff!==null&&diff<0},
       {key:"today",title:"Hoje",test:diff=>diff===0},
@@ -967,6 +999,54 @@
     });
     if(!any) root.appendChild(el(`<div class="empty-big"><h3>Nada por aqui</h3>
       <p>Nenhuma tarefa pendente com esses filtros.</p></div>`));
+  }
+
+  function renderCalendar(root,pend){
+    const now=new Date();
+    const pad=n=>String(n).padStart(2,"0");
+    if(!state.agendaMonth) state.agendaMonth=`${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+    const [y,m]=state.agendaMonth.split("-").map(Number);
+    const monthName=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+    const todayStr=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+
+    const prefix=`${y}-${pad(m)}`;
+    const byDay={}; let count=0;
+    pend.forEach(t=>{ if(t.due&&t.due.startsWith(prefix)){ (byDay[t.due]=byDay[t.due]||[]).push(t); count++; }});
+
+    const nav=el(`<div class="cal-nav">
+      <button class="btn sm" id="cal-prev" title="Mês anterior">←</button>
+      <h3 class="cal-title">${monthName.charAt(0).toUpperCase()+monthName.slice(1)}</h3>
+      <button class="btn sm" id="cal-next" title="Próximo mês">→</button>
+      <button class="btn sm ghost" id="cal-today">Hoje</button>
+      <span class="sub" style="margin-left:auto">${count} tarefa(s) com prazo no mês</span>
+    </div>`);
+    const shift=d=>{const nm=new Date(y,m-1+d,1);state.agendaMonth=`${nm.getFullYear()}-${pad(nm.getMonth()+1)}`;render();};
+    nav.querySelector("#cal-prev").addEventListener("click",()=>shift(-1));
+    nav.querySelector("#cal-next").addEventListener("click",()=>shift(1));
+    nav.querySelector("#cal-today").addEventListener("click",()=>{state.agendaMonth=null;render();});
+    root.appendChild(nav);
+
+    const grid=el(`<div class="cal-grid"></div>`);
+    ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"].forEach(d=>grid.appendChild(el(`<div class="cal-dow">${d}</div>`)));
+    const startDow=new Date(y,m-1,1).getDay();
+    const daysIn=new Date(y,m,0).getDate();
+    for(let i=0;i<startDow;i++) grid.appendChild(el(`<div class="cal-cell empty"></div>`));
+    const prioRank={alta:0,media:1,baixa:2};
+    for(let d=1;d<=daysIn;d++){
+      const key=`${prefix}-${pad(d)}`;
+      const cell=el(`<div class="cal-cell ${key===todayStr?"today":""}"><span class="cal-day">${d}</span></div>`);
+      const ts=(byDay[key]||[]).sort((a,b)=>prioRank[a.prio]-prioRank[b.prio]);
+      const late=key<todayStr;
+      ts.slice(0,3).forEach(t=>{
+        const p=projById(t.projectId);
+        const pill=el(`<button class="cal-pill ${late?"late":""}" style="background:${p?p.color:"#888"}" title="${esc(t.title)} · ${p?esc(p.name):"—"} · ${esc(t.operator)}">${esc(t.title)}</button>`);
+        if(canEditTask(t)) pill.addEventListener("click",()=>openTask(t.id));
+        cell.appendChild(pill);
+      });
+      if(ts.length>3) cell.appendChild(el(`<span class="cal-more">+${ts.length-3} tarefa(s)</span>`));
+      grid.appendChild(cell);
+    }
+    root.appendChild(grid);
   }
 
   // ---------- modal ----------
