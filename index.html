@@ -741,7 +741,7 @@
         }
         grid.appendChild(c);
       });
-      if(g.status==="ativo" && isAdmin()){
+      if(g.status==="ativo" && (isAdmin() || isDev)){
         const tile=el(`<button class="new-tile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Novo projeto</button>`);
@@ -803,7 +803,7 @@
       p.subprojects.forEach(s=>bar.appendChild(chip(esc(s.name),s.id)));
       if(tasksOf(p.id).some(t=>!t.subprojectId)) bar.appendChild(chip("Sem setor","none"));
     }
-    if(isAdmin()){
+    {
       const addSec=el(`<button class="sector-chip add" title="Criar setor">＋ Setor</button>`);
       addSec.addEventListener("click",()=>openSector(p.id,null));
       bar.appendChild(addSec);
@@ -851,7 +851,7 @@
       const nd=next?dueInfo(next.due):null;
       const late=lateCount(ts);
       const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
-        ${(editable&&isAdmin())?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
+        ${editable?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
         <div class="proj-top"><h3 class="proj-name">${esc(name)}</h3></div>
         <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
         <div class="proj-meta"><span>${done}/${ts.length} concluídas</span>
@@ -865,7 +865,7 @@
     };
     p.subprojects.forEach(s=>grid.appendChild(sectorCardEl(s.id,s.name,true)));
     if(tasksOf(p.id).some(t=>!t.subprojectId)) grid.appendChild(sectorCardEl("none","Sem setor",false));
-    if(isAdmin()){
+    {
       const tile=el(`<button class="new-tile">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Novo setor</button>`);
@@ -1136,7 +1136,7 @@
     mBody.innerHTML=`
       <p class="op-hint" style="margin:0 0 4px">Setor de <strong>${esc(p.name)}</strong>. Serve para agrupar tarefas por frente de trabalho.</p>
       <div class="field"><label>Nome do setor</label><input id="f-sname" type="text" maxlength="60" value="${esc(s.name)}" placeholder="Ex.: Arquitetura"></div>`;
-    btnDelete.style.display=id?"block":"none";
+    btnDelete.style.display=(id&&isAdmin())?"block":"none";
     openOverlay(); setTimeout(()=>{const e=document.getElementById("f-sname");if(e)e.focus();},40);
   }
 
@@ -1285,7 +1285,7 @@
       status:document.getElementById("f-status").value,color:modal.color};
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
-    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length,kind:modal.kind||"normal"})); }
+    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length,kind:modal.kind||"normal",owner_id:me.id})); }
     if(!dbErr(error)){ toast(modal.id?"Projeto atualizado":"Projeto criado"); closeModal(); await refresh(); }
   });
 

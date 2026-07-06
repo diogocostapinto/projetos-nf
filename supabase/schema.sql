@@ -49,12 +49,14 @@ create table if not exists public.projects (
   subprojects jsonb not null default '[]',
   sort_order int not null default 0,
   kind text not null default 'normal' check (kind in ('normal','dev')),
+  owner_id uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
 -- Base existente: colunas novas
 alter table public.projects add column if not exists sort_order int not null default 0;
 alter table public.projects add column if not exists kind text not null default 'normal' check (kind in ('normal','dev'));
+alter table public.projects add column if not exists owner_id uuid references public.profiles(id) on delete set null;
 
 
 -- ---------- Acesso por projeto (quando o operador não vê "todos") ----------
@@ -94,7 +96,7 @@ $$;
 
 -- ---------- Função auxiliar: usuário atual pode VER este projeto? ----------
 -- Admin vê tudo; os demais precisam de aprovação e escopo
--- (vê todos, ou tem liberação específica em project_access).
+-- (vê todos, tem liberação específica em project_access, ou é o criador).
 create or replace function public.can_view_project(pid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin()
@@ -102,6 +104,8 @@ returns boolean language sql stable security definer set search_path = public as
              exists (select 1 from public.profiles pr where pr.id = auth.uid() and pr.access_all)
           or exists (select 1 from public.project_access a
                      where a.project_id = pid and a.profile_id = auth.uid())
+          or exists (select 1 from public.projects p
+                     where p.id = pid and p.owner_id = auth.uid())
       ));
 $$;
 
@@ -165,6 +169,45 @@ drop policy if exists projects_admin_write on public.projects;
 create policy projects_admin_write on public.projects
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
+
+-- Operador aprovado pode CRIAR projetos, mas só na aba Desenvolvimento
+-- (kind='dev') e como dono; nunca projetos "normais" nem exclusão.
+drop policy if exists projects_operator_insert_dev on public.projects;
+create policy projects_operator_insert_dev on public.projects
+  for insert to authenticated
+  with check (public.is_approved() and kind = 'dev' and owner_id = auth.uid());
+
+-- Operador aprovado pode ATUALIZAR projetos que vê — o trigger abaixo
+-- restringe a alteração apenas aos setores (subprojects).
+drop policy if exists projects_operator_update on public.projects;
+create policy projects_operator_update on public.projects
+  for update to authenticated
+  using (public.is_approved() and public.can_view_project(id))
+  with check (public.is_approved() and public.can_view_project(id));
+
+-- Proteção: não-admin só altera 'subprojects' (setores) de um projeto
+create or replace function public.protect_project_fields()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is null or public.is_admin() then
+    return new;
+  end if;
+  if new.name        is distinct from old.name
+     or new.description is distinct from old.description
+     or new.color     is distinct from old.color
+     or new.status    is distinct from old.status
+     or new.sort_order is distinct from old.sort_order
+     or new.kind      is distinct from old.kind
+     or new.owner_id  is distinct from old.owner_id then
+    raise exception 'Operadores só podem alterar os setores do projeto';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists protect_project_fields on public.projects;
+create trigger protect_project_fields
+  before update on public.projects
+  for each row execute function public.protect_project_fields();
 
 -- Acesso por projeto: admin gerencia; cada um pode ler as próprias liberações
 drop policy if exists project_access_select on public.project_access;
