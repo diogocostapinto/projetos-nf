@@ -48,11 +48,13 @@ create table if not exists public.projects (
   status text not null default 'ativo' check (status in ('ativo','pausado','concluido')),
   subprojects jsonb not null default '[]',
   sort_order int not null default 0,
+  kind text not null default 'normal' check (kind in ('normal','dev')),
   created_at timestamptz not null default now()
 );
 
--- Base existente: coluna de ordenação manual dos cards de projeto
+-- Base existente: colunas novas
 alter table public.projects add column if not exists sort_order int not null default 0;
+alter table public.projects add column if not exists kind text not null default 'normal' check (kind in ('normal','dev'));
 
 
 -- ---------- Acesso por projeto (quando o operador não vê "todos") ----------

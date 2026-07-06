@@ -371,6 +371,7 @@
     </div>
     <div class="tabs" id="tabs">
       <button class="tab" data-view="projects">Projetos</button>
+      <button class="tab" data-view="dev">Desenvolvimento</button>
       <button class="tab" data-view="agenda">Agenda<span class="tab-badge" id="badge-agenda" style="display:none"></span></button>
     </div>
     <div class="toolbar">
@@ -649,6 +650,7 @@
     viewEl.innerHTML="";
     if(state.view==="projects") renderProjects(viewEl);
     else if(state.view==="project") renderBoard(viewEl);
+    else if(state.view==="dev") renderDev(viewEl);
     else renderAgenda(viewEl);
   }
 
@@ -680,10 +682,13 @@
   }
 
   function renderProjects(root){
-    const pend=data.tasks.filter(t=>t.col!=="done").length;
-    const late=lateCount(data.tasks);
+    const list=data.projects.filter(p=>p.kind!=="dev");
+    const listIds=new Set(list.map(p=>p.id));
+    const listTasks=data.tasks.filter(t=>listIds.has(t.projectId));
+    const pend=listTasks.filter(t=>t.col!=="done").length;
+    const late=lateCount(listTasks);
     const head=el(`<div class="page-head"><h2>Projetos</h2>
-      <span class="sub">${data.projects.length} projeto(s) · ${pend} pendente(s)${late?` · <b class="late-b">${late} atrasada(s)</b>`:""}</span>
+      <span class="sub">${list.length} projeto(s) · ${pend} pendente(s)${late?` · <b class="late-b">${late} atrasada(s)</b>`:""}</span>
       <button class="btn sm" id="btn-team" style="margin-left:auto">👥 Equipe (${data.profiles.length})</button></div>`);
     head.querySelector("#btn-team").addEventListener("click",openTeam);
     root.appendChild(head);
@@ -694,7 +699,7 @@
       {status:"concluido",label:"Concluídos"}
     ];
     groups.forEach(g=>{
-      const items=data.projects.filter(p=>p.status===g.status);
+      const items=list.filter(p=>p.status===g.status);
       if(g.status!=="ativo" && !items.length) return;
       const collapsed=!!ui.collapsed[g.status];
       const sec=el(`<div class="proj-section"><button class="group-head" aria-expanded="${!collapsed}">
@@ -755,13 +760,16 @@
     if(!p){ setView("projects"); return; }
     const hasSubs=p.subprojects.length>0;
 
-    let crumb=`<a id="back">← Projetos</a> / `;
+    const isDev=state.view==="dev";
+    let crumb=isDev?"":`<a id="back">← Projetos</a> / `;
     if(hasSubs && state.sector!=="overview") crumb+=`<a id="toproj">${esc(p.name)}</a> / <span>${state.sector==="all"?"Todas as tarefas":state.sector==="none"?"Sem setor":esc(sectorName(p,state.sector))}</span>`;
-    else crumb+=`<span>${esc(p.name)}</span>`;
-    const cr=el(`<div class="crumb">${crumb}</div>`);
-    cr.querySelector("#back").addEventListener("click",()=>setView("projects"));
-    if(cr.querySelector("#toproj")) cr.querySelector("#toproj").addEventListener("click",()=>{state.sector="overview";render();});
-    root.appendChild(cr);
+    else if(!isDev) crumb+=`<span>${esc(p.name)}</span>`;
+    if(crumb){
+      const cr=el(`<div class="crumb">${crumb}</div>`);
+      if(cr.querySelector("#back")) cr.querySelector("#back").addEventListener("click",()=>setView("projects"));
+      if(cr.querySelector("#toproj")) cr.querySelector("#toproj").addEventListener("click",()=>{state.sector="overview";render();});
+      root.appendChild(cr);
+    }
 
     const head=el(`<div class="page-head">
       <span class="dot" style="width:14px;height:14px;background:${p.color}"></span>
@@ -901,6 +909,33 @@
         }});
     }
     return card;
+  }
+
+  // ---------- view: desenvolvimento ----------
+  function renderDev(root){
+    const p=data.projects.find(x=>x.kind==="dev");
+    if(!p){
+      root.appendChild(el(`<div class="page-head"><h2>Desenvolvimento</h2>
+        <span class="sub">espaço da equipe de desenvolvimento e novos produtos</span></div>`));
+      if(isAdmin()){
+        const box=el(`<div class="empty-big"><h3>Quadro ainda não criado</h3>
+          <p>Crie o quadro de Desenvolvimento — ele funciona como um projeto, com setores e tarefas, mas vive nesta aba.</p>
+          <button class="btn primary" id="mk-dev" style="margin-top:12px">Criar quadro de Desenvolvimento</button></div>`);
+        box.querySelector("#mk-dev").addEventListener("click",async()=>{
+          const {error}=await sb.from("projects").insert({name:"Desenvolvimento",
+            description:"Equipe de desenvolvimento e novos produtos",kind:"dev",
+            subprojects:[],sort_order:data.projects.length,color:pickProjectColor()});
+          if(!dbErr(error)){ toast("Quadro de Desenvolvimento criado"); await refresh(); }
+        });
+        root.appendChild(box);
+      }else{
+        root.appendChild(el(`<div class="empty-big"><h3>Nada por aqui ainda</h3>
+          <p>O administrador ainda não criou o quadro de Desenvolvimento, ou você não tem acesso a ele.</p></div>`));
+      }
+      return;
+    }
+    if(state.projectId!==p.id){ state.projectId=p.id; state.sector=p.subprojects.length?"overview":"all"; }
+    renderBoard(root);
   }
 
   // ---------- view: agenda ----------
