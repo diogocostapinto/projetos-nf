@@ -101,7 +101,7 @@
   .proj-card:hover{box-shadow:var(--shadow-lift);transform:translateY(-2px)}
   .proj-top{display:flex;align-items:flex-start;gap:10px}
   .proj-name{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-weight:700;font-size:16.5px;margin:0;line-height:1.25;flex:1;word-break:break-word}
-  .proj-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0}
+  .proj-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .status{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap}
   .status.ativo{background:var(--st-ativo-bg);color:var(--st-ativo-tx)}
   .status.pausado{background:var(--st-pausado-bg);color:var(--st-pausado-tx)}
@@ -672,7 +672,7 @@
         <h3 class="proj-name">${esc(p.name)}</h3>
         <span class="status ${p.status}">${{ativo:"Ativo",pausado:"Pausado",concluido:"Concluído"}[p.status]}</span>
       </div>
-      ${p.desc?`<p class="proj-desc">${esc(p.desc)}</p>`:""}
+      ${p.desc?`<p class="proj-desc" title="${esc(p.desc)}">${esc(p.desc)}</p>`:""}
       <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
       <div class="proj-meta">
         <span>${done}/${ts.length} concluídas${p.subprojects.length?` · ${p.subprojects.length} setor(es)`:""}</span>
