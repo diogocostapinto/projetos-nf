@@ -67,6 +67,15 @@ create table if not exists public.project_access (
   primary key (project_id, profile_id)
 );
 
+-- ---------- Confirmação de recebimento de tarefa (por usuário) ----------
+-- Uma linha = aquele usuário já "leu" a tarefa atribuída a ele.
+create table if not exists public.task_acks (
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (task_id, profile_id)
+);
+
 -- ---------- Tarefas ----------
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
@@ -146,6 +155,18 @@ alter table public.profiles       enable row level security;
 alter table public.projects       enable row level security;
 alter table public.tasks          enable row level security;
 alter table public.project_access enable row level security;
+alter table public.task_acks      enable row level security;
+
+-- Confirmações de recebimento: cada um lê e gerencia apenas as suas
+drop policy if exists task_acks_select on public.task_acks;
+create policy task_acks_select on public.task_acks
+  for select to authenticated using (profile_id = auth.uid());
+drop policy if exists task_acks_insert on public.task_acks;
+create policy task_acks_insert on public.task_acks
+  for insert to authenticated with check (profile_id = auth.uid());
+drop policy if exists task_acks_delete on public.task_acks;
+create policy task_acks_delete on public.task_acks
+  for delete to authenticated using (profile_id = auth.uid());
 
 -- Perfis: cada um vê o próprio (para saber se está pendente);
 -- aprovados veem todos; admin edita qualquer um
@@ -269,6 +290,9 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.project_access;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.task_acks;
 exception when duplicate_object then null; end $$;
 
 -- ============================================================

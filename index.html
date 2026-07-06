@@ -237,6 +237,14 @@
   .tab-badge{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 5px;margin-left:7px;
     border-radius:20px;background:var(--clay);color:#fff;font-size:10.5px;font-weight:700;line-height:1;vertical-align:1px}
   .late-b{color:var(--late-tx);font-weight:700}
+  .bell{position:relative;font-size:15px;line-height:1}
+  .bell .tab-badge{position:absolute;top:-5px;right:-5px;margin:0}
+  .inbox-list{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto}
+  .inbox-row{display:flex;align-items:center;gap:12px;background:var(--input-bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .inbox-main{flex:1;min-width:0;cursor:pointer}
+  .inbox-title{font-weight:700;font-size:14px;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inbox-sub{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .inbox-row [data-ack]{flex:none}
   .group-head{border:none;background:transparent;width:100%;padding:0;color:inherit;cursor:pointer;text-align:left}
   .group-head:hover h3{color:var(--pine-deep)}
   .caret{display:inline-block;font-size:12px;color:var(--muted);transition:transform .15s;margin-right:2px}
@@ -378,6 +386,7 @@
     </div>
     <div class="toolbar">
       <button class="btn sm ghost" id="btn-theme" title="Alternar tema claro/escuro" aria-label="Alternar tema"></button>
+      <button class="btn sm ghost bell" id="btn-inbox" title="Novas tarefas atribuídas a você" aria-label="Novas tarefas">🔔<span class="tab-badge" id="badge-inbox" style="display:none"></span></button>
       <span class="user-pill"><span class="op" id="user-avatar" style="background:var(--pine)"></span><span id="user-email"></span><span class="role-tag" id="user-role"></span></span>
       <button class="btn sm" id="btn-logout">Sair</button>
     </div>
@@ -450,19 +459,24 @@
   const isAdmin = ()=> me && me.role==="admin";
   // Qualquer usuário aprovado que enxerga a tarefa pode editá-la/excluí-la
   const canEditTask = () => !!me;
+  // Tarefas atribuídas a mim, ainda não confirmadas e não concluídas
+  const myNewTasks = () => !me ? [] : data.tasks.filter(t=>
+    t.operator_id===me.id && t.col!=="done" && !(data.ackedTaskIds&&data.ackedTaskIds.has(t.id)));
   const activeProfiles = ()=> data.profiles.filter(u=>u.approved||u.role==="admin");
 
   // ---------- data access ----------
   async function loadAll(){
-    const [pr,pj,tk,pa]=await Promise.all([
+    const [pr,pj,tk,pa,ak]=await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("projects").select("*"),
       sb.from("tasks").select("*"),
-      sb.from("project_access").select("*")
+      sb.from("project_access").select("*"),
+      sb.from("task_acks").select("task_id")
     ]);
-    if(pr.error||pj.error||tk.error||pa.error){ toast("Erro ao carregar dados"); console.error(pr.error||pj.error||tk.error||pa.error); return; }
+    if(pr.error||pj.error||tk.error||pa.error||ak.error){ toast("Erro ao carregar dados"); console.error(pr.error||pj.error||tk.error||pa.error||ak.error); return; }
     data.profiles=pr.data||[];
     data.access=pa.data||[];
+    data.ackedTaskIds=new Set((ak.data||[]).map(r=>r.task_id));
     data.projects=(pj.data||[]).map(p=>({...p,desc:p.description||"",subprojects:Array.isArray(p.subprojects)?p.subprojects:[]}))
       .sort((a,b)=>((a.sort_order??0)-(b.sort_order??0)) || (a.created_at<b.created_at?-1:1));
     const byId={}; data.profiles.forEach(u=>byId[u.id]=u);
@@ -631,6 +645,47 @@
   }
 
   document.getElementById("btn-logout").addEventListener("click",async()=>{ await sb.auth.signOut(); });
+  document.getElementById("btn-inbox").addEventListener("click",openInbox);
+
+  async function ackTasks(ids){
+    if(!ids.length) return;
+    const rows=ids.map(id=>({task_id:id,profile_id:me.id}));
+    const {error}=await sb.from("task_acks").upsert(rows,{onConflict:"task_id,profile_id"});
+    if(dbErr(error)) return;
+    ids.forEach(id=>data.ackedTaskIds.add(id));
+  }
+
+  function openInbox(){
+    modal={type:"inbox",id:null};
+    const items=myNewTasks().slice().sort((a,b)=>(a.created_at<b.created_at?1:-1));
+    mTitle.textContent=`Novas tarefas${items.length?` (${items.length})`:""}`;
+    if(!items.length){
+      mBody.innerHTML=`<p class="op-hint" style="margin:0">Nenhuma tarefa nova por aqui. Quando alguém atribuir uma tarefa a você, ela aparece nesta lista.</p>`;
+    }else{
+      const rows=items.map(t=>{
+        const p=projById(t.projectId), d=dueInfo(t.due);
+        return `<div class="inbox-row" data-id="${t.id}">
+          <div class="inbox-main">
+            <p class="inbox-title">${esc(t.title)}</p>
+            <span class="inbox-sub"><span class="pdot" style="background:${p?p.color:'#999'}"></span>${p?esc(p.name):"—"}${t.subprojectId?" › "+esc(sectorName(p,t.subprojectId)):""}${t.due?` · prazo ${d.text}`:""}</span>
+          </div>
+          <button class="btn sm" data-ack="${t.id}">Confirmar</button>
+        </div>`;
+      }).join("");
+      mBody.innerHTML=`<div class="inbox-list">${rows}</div>`;
+      mBody.querySelectorAll("[data-ack]").forEach(b=>b.addEventListener("click",async()=>{
+        await ackTasks([b.dataset.ack]); openInbox(); render();
+      }));
+      mBody.querySelectorAll(".inbox-row .inbox-main").forEach(m=>m.addEventListener("click",()=>{
+        const id=m.closest(".inbox-row").dataset.id; closeModal(); openTask(id);
+      }));
+    }
+    btnDelete.style.display="none";
+    document.getElementById("btn-cancel").style.display="none";
+    const save=document.getElementById("btn-save");
+    save.textContent=items.length?"Marcar todas como lidas":"Fechar";
+    openOverlay();
+  }
 
   // ---------- router / render ----------
   function openProjectView(pid){
@@ -652,6 +707,8 @@
     document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.view===activeTab));
     const late=lateCount(data.tasks), badge=document.getElementById("badge-agenda");
     if(badge){ badge.textContent=late; badge.style.display=late?"inline-grid":"none"; }
+    const nnew=myNewTasks().length, ib=document.getElementById("badge-inbox");
+    if(ib){ ib.textContent=nnew; ib.style.display=nnew?"inline-grid":"none"; }
     viewEl.innerHTML="";
     if(state.view==="projects") renderProjects(viewEl);
     else if(state.view==="project") renderBoard(viewEl);
@@ -1246,6 +1303,7 @@
 
   document.getElementById("btn-save").addEventListener("click",async()=>{
     if(modal.type==="team"||modal.type==="access"){ closeModal(); return; }
+    if(modal.type==="inbox"){ await ackTasks(myNewTasks().map(t=>t.id)); closeModal(); render(); return; }
     if(modal.type==="sector"){
       const name=document.getElementById("f-sname").value.trim();
       if(!name){toast("Dê um nome ao setor");return;}
