@@ -947,7 +947,13 @@
     const bar=el(`<div class="filters">
       <div class="filter"><label>Projeto</label><select id="flt-proj">
         <option value="all">Todos os projetos</option>
-        ${data.projects.map(p=>`<option value="${p.id}" ${state.filterProject===p.id?"selected":""}>${esc(p.name)}</option>`).join("")}
+        ${(()=>{
+          const opt=p=>`<option value="${p.id}" ${state.filterProject===p.id?"selected":""}>${esc(p.name)}</option>`;
+          const norm=data.projects.filter(p=>(p.kind||"normal")!=="dev");
+          const dev=data.projects.filter(p=>p.kind==="dev");
+          return (norm.length?`<optgroup label="Projetos">${norm.map(opt).join("")}</optgroup>`:"")
+               + (dev.length?`<optgroup label="Desenvolvimento">${dev.map(opt).join("")}</optgroup>`:"");
+        })()}
       </select></div>
       <div class="filter"><label>Setor</label><select id="flt-sec">
         <option value="all">Todos os setores</option>
