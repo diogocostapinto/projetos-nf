@@ -202,40 +202,16 @@ create policy tasks_update_visible on public.tasks
   using (public.is_approved() and public.can_view_project(project_id))
   with check (public.is_approved() and public.can_view_project(project_id));
 
--- ---------- Proteção: o que cada um pode ALTERAR numa tarefa ----------
--- Admin: tudo. Responsável pela tarefa: conteúdo, mas não reatribui
--- projeto/setor/responsável. Demais usuários que veem o projeto:
--- apenas a situação (coluna).
-create or replace function public.protect_task_fields()
-returns trigger language plpgsql as $$
-begin
-  if auth.uid() is null or public.is_admin() then
-    return new;
-  end if;
-  if old.operator_id = auth.uid() then
-    if new.project_id    is distinct from old.project_id
-       or new.subproject_id is distinct from old.subproject_id
-       or new.operator_id   is distinct from old.operator_id then
-      raise exception 'Apenas administradores podem reatribuir projeto, setor ou responsável';
-    end if;
-    return new;
-  end if;
-  if new.title          is distinct from old.title
-     or new.description is distinct from old.description
-     or new.due          is distinct from old.due
-     or new.prio         is distinct from old.prio
-     or new.project_id   is distinct from old.project_id
-     or new.subproject_id is distinct from old.subproject_id
-     or new.operator_id  is distinct from old.operator_id then
-    raise exception 'Em tarefas de outros, você só pode mudar a situação';
-  end if;
-  return new;
-end; $$;
+-- Excluir tarefa: qualquer aprovado que enxerga o projeto
+drop policy if exists tasks_delete_visible on public.tasks;
+create policy tasks_delete_visible on public.tasks
+  for delete to authenticated
+  using (public.is_approved() and public.can_view_project(project_id));
 
+-- Sem restrição de colunas por papel: quem vê o projeto edita qualquer
+-- campo da tarefa (o trigger antigo de proteção foi removido).
 drop trigger if exists protect_task_fields on public.tasks;
-create trigger protect_task_fields
-  before update on public.tasks
-  for each row execute function public.protect_task_fields();
+drop function if exists public.protect_task_fields();
 
 -- ---------- Tempo real ----------
 -- Faz o app de todos atualizar sozinho quando algo muda

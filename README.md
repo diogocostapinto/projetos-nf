@@ -16,7 +16,7 @@ Conta nova entra como **pendente**: a pessoa consegue se cadastrar e fazer login
 
 O que cada aprovado enxerga é controlado pelo **escopo por operador**: por padrão o operador vê todos os projetos; na tela Equipe o admin pode restringir (botão *Vê tudo / Restrito*) e marcar só os projetos liberados para aquela pessoa. Projetos só o admin cria.
 
-Em qualquer projeto que o operador **vê**, ele pode **criar tarefas** (escolhendo setor e responsável) e **mudar a situação** de qualquer tarefa (concluir, reabrir, mover de coluna). O conteúdo (título, descrição, prazo, prioridade) só é editável pelo responsável da tarefa — que ainda assim não reatribui projeto/setor/responsável — e excluir tarefa é só admin. O **admin** vê tudo, aprova/revoga acessos, define escopos e cria, edita e exclui qualquer coisa. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface.
+Em qualquer projeto que o operador **vê**, ele tem controle total das tarefas: **criar, editar qualquer campo** (título, descrição, prazo, prioridade, setor, responsável, situação) e **excluir**. A única coisa que operadores **não** fazem é **criar, editar ou excluir projetos** — isso é exclusivo do admin. O **admin** vê tudo, aprova/revoga acessos, define escopos e gerencia projetos. As regras são aplicadas no servidor (RLS + trigger que impede não-admins de alterar papel/aprovação/escopo), não apenas escondidas na interface. Cada tarefa registra a **data de criação**, exibida no card e ao editar, para acompanhar há quanto tempo está aberta.
 
 ## Como publicar (do zero)
 
