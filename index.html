@@ -643,8 +643,10 @@
 
   function render(){
     if(!session) return;
-    document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",
-      t.dataset.view===(state.view==="project"?"projects":state.view)));
+    const activeTab=state.view==="project"
+      ? ((projById(state.projectId)||{}).kind==="dev"?"dev":"projects")
+      : state.view;
+    document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.view===activeTab));
     const late=lateCount(data.tasks), badge=document.getElementById("badge-agenda");
     if(badge){ badge.textContent=late; badge.style.display=late?"inline-grid":"none"; }
     viewEl.innerHTML="";
@@ -681,14 +683,17 @@
     return c;
   }
 
-  function renderProjects(root){
-    const list=data.projects.filter(p=>p.kind!=="dev");
+  function renderProjects(root){ renderProjectList(root,"normal"); }
+
+  function renderProjectList(root,kind){
+    const isDev=kind==="dev";
+    const list=data.projects.filter(p=>(p.kind||"normal")===kind);
     const listIds=new Set(list.map(p=>p.id));
     const listTasks=data.tasks.filter(t=>listIds.has(t.projectId));
     const pend=listTasks.filter(t=>t.col!=="done").length;
     const late=lateCount(listTasks);
-    const head=el(`<div class="page-head"><h2>Projetos</h2>
-      <span class="sub">${list.length} projeto(s) · ${pend} pendente(s)${late?` · <b class="late-b">${late} atrasada(s)</b>`:""}</span>
+    const head=el(`<div class="page-head"><h2>${isDev?"Desenvolvimento":"Projetos"}</h2>
+      <span class="sub">${isDev?"equipe de desenvolvimento e novos produtos · ":""}${list.length} projeto(s) · ${pend} pendente(s)${late?` · <b class="late-b">${late} atrasada(s)</b>`:""}</span>
       <button class="btn sm" id="btn-team" style="margin-left:auto">👥 Equipe (${data.profiles.length})</button></div>`);
     head.querySelector("#btn-team").addEventListener("click",openTeam);
     root.appendChild(head);
@@ -737,7 +742,7 @@
         const tile=el(`<button class="new-tile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Novo projeto</button>`);
-        tile.addEventListener("click",()=>openProject(null));
+        tile.addEventListener("click",()=>openProject(null,kind));
         grid.appendChild(tile);
       }
       root.appendChild(sec);
@@ -760,16 +765,14 @@
     if(!p){ setView("projects"); return; }
     const hasSubs=p.subprojects.length>0;
 
-    const isDev=state.view==="dev";
-    let crumb=isDev?"":`<a id="back">← Projetos</a> / `;
+    const fromDev=p.kind==="dev";
+    let crumb=`<a id="back">← ${fromDev?"Desenvolvimento":"Projetos"}</a> / `;
     if(hasSubs && state.sector!=="overview") crumb+=`<a id="toproj">${esc(p.name)}</a> / <span>${state.sector==="all"?"Todas as tarefas":state.sector==="none"?"Sem setor":esc(sectorName(p,state.sector))}</span>`;
-    else if(!isDev) crumb+=`<span>${esc(p.name)}</span>`;
-    if(crumb){
-      const cr=el(`<div class="crumb">${crumb}</div>`);
-      if(cr.querySelector("#back")) cr.querySelector("#back").addEventListener("click",()=>setView("projects"));
-      if(cr.querySelector("#toproj")) cr.querySelector("#toproj").addEventListener("click",()=>{state.sector="overview";render();});
-      root.appendChild(cr);
-    }
+    else crumb+=`<span>${esc(p.name)}</span>`;
+    const cr=el(`<div class="crumb">${crumb}</div>`);
+    cr.querySelector("#back").addEventListener("click",()=>setView(fromDev?"dev":"projects"));
+    if(cr.querySelector("#toproj")) cr.querySelector("#toproj").addEventListener("click",()=>{state.sector="overview";render();});
+    root.appendChild(cr);
 
     const head=el(`<div class="page-head">
       <span class="dot" style="width:14px;height:14px;background:${p.color}"></span>
@@ -912,31 +915,7 @@
   }
 
   // ---------- view: desenvolvimento ----------
-  function renderDev(root){
-    const p=data.projects.find(x=>x.kind==="dev");
-    if(!p){
-      root.appendChild(el(`<div class="page-head"><h2>Desenvolvimento</h2>
-        <span class="sub">espaço da equipe de desenvolvimento e novos produtos</span></div>`));
-      if(isAdmin()){
-        const box=el(`<div class="empty-big"><h3>Quadro ainda não criado</h3>
-          <p>Crie o quadro de Desenvolvimento — ele funciona como um projeto, com setores e tarefas, mas vive nesta aba.</p>
-          <button class="btn primary" id="mk-dev" style="margin-top:12px">Criar quadro de Desenvolvimento</button></div>`);
-        box.querySelector("#mk-dev").addEventListener("click",async()=>{
-          const {error}=await sb.from("projects").insert({name:"Desenvolvimento",
-            description:"Equipe de desenvolvimento e novos produtos",kind:"dev",
-            subprojects:[],sort_order:data.projects.length,color:pickProjectColor()});
-          if(!dbErr(error)){ toast("Quadro de Desenvolvimento criado"); await refresh(); }
-        });
-        root.appendChild(box);
-      }else{
-        root.appendChild(el(`<div class="empty-big"><h3>Nada por aqui ainda</h3>
-          <p>O administrador ainda não criou o quadro de Desenvolvimento, ou você não tem acesso a ele.</p></div>`));
-      }
-      return;
-    }
-    if(state.projectId!==p.id){ state.projectId=p.id; state.sector=p.subprojects.length?"overview":"all"; }
-    renderBoard(root);
-  }
+  function renderDev(root){ renderProjectList(root,"dev"); }
 
   // ---------- view: agenda ----------
   function renderAgenda(root){
@@ -1147,9 +1126,10 @@
     openOverlay(); setTimeout(()=>{const e=document.getElementById("f-sname");if(e)e.focus();},40);
   }
 
-  function openProject(id){
-    modal={type:"project",id,color:(id?projById(id).color:pickProjectColor())};
-    mTitle.textContent=id?"Editar projeto":"Novo projeto";
+  function openProject(id,kind){
+    modal={type:"project",id,color:(id?projById(id).color:pickProjectColor()),
+      kind:id?(projById(id).kind||"normal"):(kind||"normal")};
+    mTitle.textContent=id?"Editar projeto":(modal.kind==="dev"?"Novo projeto de Desenvolvimento":"Novo projeto");
     const p=id?projById(id):{name:"",desc:"",status:"ativo",private:!isAdmin()};
     const privLock=isAdmin()?"":"disabled";
     mBody.innerHTML=`
@@ -1294,7 +1274,7 @@
       status:document.getElementById("f-status").value,color:modal.color};
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
-    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length})); }
+    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length,kind:modal.kind||"normal"})); }
     if(!dbErr(error)){ toast(modal.id?"Projeto atualizado":"Projeto criado"); closeModal(); await refresh(); }
   });
 
@@ -1323,9 +1303,10 @@
     // project
     const n=tasksOf(modal.id).length;
     if(confirm(`Excluir o projeto e suas ${n} tarefa(s)?`)){
+      const wasDev=(projById(modal.id)||{}).kind==="dev";
       const {error}=await sb.from("projects").delete().eq("id",modal.id);
       if(!dbErr(error)){
-        if(state.projectId===modal.id) state.view="projects";
+        if(state.projectId===modal.id) state.view=wasDev?"dev":"projects";
         toast("Projeto excluído"); closeModal(); await refresh();
       }
     }
