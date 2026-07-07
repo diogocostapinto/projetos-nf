@@ -108,7 +108,13 @@
   .status.concluido{background:var(--st-conc-bg);color:var(--st-conc-tx)}
   .bar{height:6px;background:var(--column);border-radius:20px;overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--pine);border-radius:20px;transition:width .3s}
+  .bar.mine{height:5px}
+  .bar.mine>i{background:var(--amber)}
   .proj-meta{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .mine-label{display:inline-flex;align-items:center;gap:5px}
+  .mine-label::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--amber)}
+  .mine-badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 6px;
+    border-radius:20px;background:var(--clay);color:#fff;font-size:11px;font-weight:700;line-height:1;flex:none}
   .proj-meta .chip{margin:0}
   .proj-edit{position:absolute;top:12px;right:12px;opacity:0;transition:.14s}
   .proj-card:hover .proj-edit{opacity:1}
@@ -723,10 +729,15 @@
     const late=lateCount(ts);
     const next=ts.filter(t=>t.col!=="done"&&t.due).sort((a,b)=>a.due<b.due?-1:1)[0];
     const nd=next?dueInfo(next.due):null;
+    const mine=me?ts.filter(t=>t.operator_id===me.id):[];
+    const myDone=mine.filter(t=>t.col==="done").length;
+    const myPend=mine.length-myDone;
+    const myPct=mine.length?Math.round(myDone/mine.length*100):0;
     const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
       ${isAdmin()?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
       <div class="proj-top">
         <h3 class="proj-name">${esc(p.name)}</h3>
+        ${myPend?`<span class="mine-badge" title="${myPend} tarefa(s) sua(s) pendente(s) neste projeto">${myPend}</span>`:""}
         <span class="status ${p.status}">${{ativo:"Ativo",pausado:"Pausado",concluido:"Concluído"}[p.status]}</span>
       </div>
       ${p.desc?`<p class="proj-desc" title="${esc(p.desc)}">${esc(p.desc)}</p>`:""}
@@ -738,6 +749,11 @@
         ${nd?`<span class="chip ${nd.cls}">próx.: ${nd.text}</span>`:`<span class="chip">sem prazos</span>`}
         </span>
       </div>
+      ${mine.length?`<div class="bar mine"><i style="width:${myPct}%"></i></div>
+      <div class="proj-meta">
+        <span class="mine-label">minhas: ${myDone}/${mine.length} (${myPct}%)</span>
+        ${myPend?`<span class="chip due-late">${myPend} p/ você</span>`:`<span class="chip due-ok">tudo feito</span>`}
+      </div>`:""}
     </div>`);
     c.addEventListener("click",e=>{ if(e.target.closest("[data-edit]")){openProject(p.id);return;} openProjectView(p.id); });
     return c;
