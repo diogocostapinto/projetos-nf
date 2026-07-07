@@ -255,6 +255,15 @@
   .tab-badge{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 5px;margin-left:7px;
     border-radius:20px;background:var(--clay);color:#fff;font-size:10.5px;font-weight:700;line-height:1;vertical-align:1px}
   .late-b{color:var(--late-tx);font-weight:700}
+  .bright-ctl{display:inline-flex;align-items:center;gap:7px;color:var(--muted);padding:0 4px}
+  .bright-ctl .bright-ic{flex:none}
+  .bright-ctl input[type=range]{-webkit-appearance:none;appearance:none;width:96px;height:4px;border-radius:20px;
+    background:linear-gradient(90deg,var(--column),var(--pine));outline:none;cursor:pointer}
+  .bright-ctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--pine);border:2px solid var(--surface);box-shadow:var(--shadow);cursor:pointer}
+  .bright-ctl input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:var(--pine);border:2px solid var(--surface);cursor:pointer}
+  @media (max-width:768px){ .bright-ctl input[type=range]{width:70px} }
   .bell{position:relative;font-size:15px;line-height:1}
   .bell .tab-badge{position:absolute;top:-5px;right:-5px;margin:0}
   .inbox-list{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto}
@@ -403,7 +412,10 @@
       <button class="tab" data-view="agenda">Agenda</button>
     </div>
     <div class="toolbar">
-      <button class="btn sm ghost" id="btn-theme" title="Alternar tema claro/escuro" aria-label="Alternar tema"></button>
+      <span class="bright-ctl" title="Brilho da tela (escuro ↔ claro)">
+        <svg class="bright-ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v1.5m0 15V21M4.5 12H3m18 0h-1.5M6 6l-1 -1m14 14-1-1M18 6l1-1M5 19l1-1"/></svg>
+        <input type="range" id="brightness" min="0" max="100" step="1" value="100" aria-label="Brilho da tela">
+      </span>
       <button class="btn sm ghost bell" id="btn-inbox" title="Novas tarefas atribuídas a você" aria-label="Novas tarefas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="tab-badge" id="badge-inbox" style="display:none"></span></button>
       <span class="user-pill"><span class="op" id="user-avatar" style="background:var(--pine)"></span><span id="user-email"></span><span class="role-tag" id="user-role"></span></span>
       <button class="btn sm" id="btn-logout">Sair</button>
@@ -448,22 +460,31 @@
   ];
   const PRIO_W={alta:0,media:1,baixa:2};
 
-  // ---------- theme ----------
-  const THEME_KEY="organizador.theme";
-  const SUN=`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5.6 5.6 4.2 4.2m15.6 15.6-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4"/></svg>`;
-  const MOON=`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>`;
-  function applyTheme(t){
-    document.documentElement.setAttribute("data-theme", t);
-    const b=document.getElementById("btn-theme"); if(b) b.innerHTML = t==="dark"?SUN:MOON;
+  // ---------- brilho (interpola entre escuro e claro) ----------
+  const BRIGHT_KEY="organizador.brightness";
+  const PAL_DARK={"--bg":"#0F1117","--surface":"#171B24","--column":"#1E2331","--ink":"#E6E9F2","--muted":"#98A0B4","--line":"#2E3546","--pine":"#4C7DF0","--pine-deep":"#86A8F7","--amber":"#D89B4A","--clay":"#D46A52","--on-pine":"#0A0E1A","--input-bg":"#141824","--sel":"#26375E","--chip-bg":"#252B3A","--chip-tx":"#98A0B4","--ok-bg":"#1B2540","--ok-tx":"#9FB8F5","--soon-bg":"#33291A","--soon-tx":"#E0B26A","--late-bg":"#3A231D","--late-tx":"#E79683","--st-ativo-bg":"#1B2540","--st-ativo-tx":"#9FB8F5","--st-pausado-bg":"#33291A","--st-pausado-tx":"#E0B26A","--st-conc-bg":"#242A38","--st-conc-tx":"#98A0B4","--toast-bg":"#E6E9F2","--toast-tx":"#0A0E1A"};
+  const PAL_LIGHT={"--bg":"#EAEDF3","--surface":"#FFFFFF","--column":"#E2E6EF","--ink":"#1A2333","--muted":"#6A7488","--line":"#D3D9E4","--pine":"#002FA7","--pine-deep":"#00238A","--amber":"#C07A24","--clay":"#AE402B","--on-pine":"#EAF0FF","--input-bg":"#FBFCFF","--sel":"#CBD9F7","--chip-bg":"#EEF1F7","--chip-tx":"#6A7488","--ok-bg":"#E1E9FB","--ok-tx":"#00238A","--soon-bg":"#F6ECD9","--soon-tx":"#8A5A12","--late-bg":"#F5E1DC","--late-tx":"#8E3320","--st-ativo-bg":"#E1E9FB","--st-ativo-tx":"#00238A","--st-pausado-bg":"#F6ECD9","--st-pausado-tx":"#8A5A12","--st-conc-bg":"#E8EBF0","--st-conc-tx":"#6A7488","--toast-bg":"#16203A","--toast-tx":"#EAF0FF"};
+  const hex2rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const rgb2hex=c=>"#"+c.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,"0")).join("");
+  const lerpHex=(a,b,t)=>{const A=hex2rgb(a),B=hex2rgb(b);return rgb2hex([0,1,2].map(i=>A[i]+(B[i]-A[i])*t));};
+  function applyBrightness(t){ // t: 0 = escuro, 1 = claro
+    const root=document.documentElement.style;
+    for(const k in PAL_LIGHT) root.setProperty(k, lerpHex(PAL_DARK[k], PAL_LIGHT[k], t));
+    // sombras: mais suaves no escuro, um pouco mais fortes no claro
+    if(t<0.5){ root.setProperty("--shadow","0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.3)"); root.setProperty("--shadow-lift","0 6px 22px rgba(0,0,0,.5)"); }
+    else{ root.setProperty("--shadow","0 1px 2px rgba(20,30,60,.06),0 4px 14px rgba(20,30,60,.05)"); root.setProperty("--shadow-lift","0 6px 22px rgba(20,30,60,.14)"); }
+    document.documentElement.setAttribute("data-theme", t<0.5?"dark":"light");
   }
-  (function initTheme(){
-    let t; try{ t=localStorage.getItem(THEME_KEY); }catch(e){}
-    if(!t) t=(window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";
-    applyTheme(t);
+  (function initBrightness(){
+    let v; try{ v=localStorage.getItem(BRIGHT_KEY); }catch(e){}
+    let t = v!=null ? (parseInt(v,10)/100) : ((window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?0:1);
+    if(isNaN(t)) t=1;
+    const sl=document.getElementById("brightness"); if(sl) sl.value=Math.round(t*100);
+    applyBrightness(t);
   })();
-  document.getElementById("btn-theme").addEventListener("click",()=>{
-    const next=document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark";
-    applyTheme(next); try{ localStorage.setItem(THEME_KEY,next); }catch(e){}
+  document.getElementById("brightness").addEventListener("input",e=>{
+    const t=(+e.target.value)/100; applyBrightness(t);
+    try{ localStorage.setItem(BRIGHT_KEY, e.target.value); }catch(err){}
   });
 
   // ---------- state ----------
