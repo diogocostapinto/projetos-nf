@@ -207,6 +207,12 @@
   .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,111,94,.14)}
   .row{display:flex;gap:12px}
   .row .field{flex:1}
+  .sub-editor{display:flex;flex-direction:column;gap:8px}
+  .sub-row{display:flex;align-items:center;gap:8px}
+  .sub-row .sub-name{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-family:inherit;font-size:14px;color:var(--ink);background:var(--input-bg)}
+  .sub-row .sub-name:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,111,94,.14)}
+  .sub-row .icon-btn{flex:none}
+  #sub-add{align-self:flex-start}
   .switch-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;cursor:pointer;user-select:none}
   .switch-row input{display:none}
   .switch{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:background .15s}
@@ -1249,9 +1255,10 @@
   function openProject(id,kind){
     modal={type:"project",id,color:(id?projById(id).color:pickProjectColor()),
       kind:id?(projById(id).kind||"normal"):(kind||"normal")};
+    const p=id?projById(id):{name:"",desc:"",status:"ativo"};
+    modal.subs=(id?(p.subprojects||[]):[]).map(s=>({...s}));
+    modal.origSubs=modal.subs.map(s=>s.id);
     mTitle.textContent=id?"Editar projeto":(modal.kind==="dev"?"Novo projeto de Desenvolvimento":"Novo projeto");
-    const p=id?projById(id):{name:"",desc:"",status:"ativo",private:!isAdmin()};
-    const privLock=isAdmin()?"":"disabled";
     mBody.innerHTML=`
       <div class="field"><label>Nome do projeto</label><input id="f-name" type="text" maxlength="80" value="${esc(p.name)}" placeholder="Ex.: Lançamento do site"></div>
       <div class="field"><label>Descrição</label><textarea id="f-pdesc" placeholder="Objetivo do projeto…">${esc(p.desc||"")}</textarea></div>
@@ -1262,9 +1269,33 @@
           <option value="concluido" ${p.status==="concluido"?"selected":""}>Concluído</option></select></div>
         <div class="field"><label>Cor ${id?"":"(automática)"}</label>
           <div class="color-pick"><span class="color-dot" id="f-color" style="background:${modal.color}"></span></div></div>
-      </div>`;
+      </div>
+      <div class="field"><label>Setores</label><div id="proj-sectors" class="sub-editor"></div></div>`;
+    renderProjectSectors();
     btnDelete.style.display=id?"block":"none";
     openOverlay(); setTimeout(()=>{const e=document.getElementById("f-name");if(e)e.focus();},40);
+  }
+
+  function syncSubInputs(){
+    mBody.querySelectorAll(".sub-row").forEach(r=>{
+      const s=modal.subs.find(x=>x.id===r.dataset.subId), inp=r.querySelector(".sub-name");
+      if(s&&inp) s.name=inp.value;
+    });
+  }
+  function renderProjectSectors(){
+    const box=mBody.querySelector("#proj-sectors"); if(!box) return;
+    box.innerHTML=modal.subs.map(s=>`<div class="sub-row" data-sub-id="${s.id}">
+        <input class="sub-name" type="text" maxlength="60" value="${esc(s.name)}" placeholder="Nome do setor">
+        <button class="icon-btn" type="button" data-sub-del="${s.id}" title="Excluir setor">✕</button>
+      </div>`).join("")
+      +`<button class="btn sm" type="button" id="sub-add">＋ Adicionar setor</button>`;
+    box.querySelector("#sub-add").addEventListener("click",()=>{
+      syncSubInputs(); modal.subs.push({id:uid(),name:""}); renderProjectSectors();
+      const inps=box.querySelectorAll(".sub-name"); if(inps.length) inps[inps.length-1].focus();
+    });
+    box.querySelectorAll("[data-sub-del]").forEach(b=>b.addEventListener("click",()=>{
+      syncSubInputs(); modal.subs=modal.subs.filter(x=>x.id!==b.dataset.subDel); renderProjectSectors();
+    }));
   }
 
   function openTeam(){
@@ -1388,12 +1419,24 @@
     // project
     const name=document.getElementById("f-name").value.trim();
     if(!name){toast("Dê um nome ao projeto");return;}
+    syncSubInputs();
+    const subs=modal.subs.map(s=>({id:s.id,name:s.name.trim()})).filter(s=>s.name);
     const fields={name,description:document.getElementById("f-pdesc").value.trim(),
-      status:document.getElementById("f-status").value,color:modal.color};
+      status:document.getElementById("f-status").value,color:modal.color,subprojects:subs};
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
-    else{ ({error}=await sb.from("projects").insert({...fields,subprojects:[],sort_order:data.projects.length,kind:modal.kind||"normal",owner_id:me.id})); }
-    if(!dbErr(error)){ toast(modal.id?"Projeto atualizado":"Projeto criado"); closeModal(); await refresh(); }
+    else{ ({error}=await sb.from("projects").insert({...fields,sort_order:data.projects.length,kind:modal.kind||"normal",owner_id:me.id})); }
+    if(dbErr(error)) return;
+    // setores removidos: solta as tarefas deles para "sem setor"
+    if(modal.id){
+      const kept=new Set(subs.map(s=>s.id));
+      const removed=(modal.origSubs||[]).filter(id=>!kept.has(id));
+      if(removed.length){
+        await sb.from("tasks").update({subproject_id:""}).eq("project_id",modal.id).in("subproject_id",removed);
+        if(removed.includes(state.sector)) state.sector=subs.length?"overview":"all";
+      }
+    }
+    toast(modal.id?"Projeto atualizado":"Projeto criado"); closeModal(); await refresh();
   });
 
   btnDelete.addEventListener("click",async()=>{
