@@ -973,8 +973,12 @@
       c.addEventListener("click",e=>{ if(e.target.closest("[data-edit]")){openSector(p.id,sid);return;} state.sector=sid;render(); });
       return c;
     };
-    p.subprojects.forEach(s=>grid.appendChild(sectorCardEl(s.id,s.name,true)));
-    if(tasksOf(p.id).some(t=>!t.subprojectId)) grid.appendChild(sectorCardEl("none","Sem setor",false));
+    const secEntries=p.subprojects.map(s=>({sid:s.id,name:s.name,editable:true}));
+    if(tasksOf(p.id).some(t=>!t.subprojectId)) secEntries.push({sid:"none",name:"Sem setor",editable:false});
+    const secHasMyPend=sid=>me && tasksOf(p.id).some(t=>
+      (sid==="none"?!t.subprojectId:t.subprojectId===sid) && t.operator_id===me.id && t.col!=="done");
+    secEntries.sort((a,b)=>(secHasMyPend(b.sid)?1:0)-(secHasMyPend(a.sid)?1:0)); // pendências minhas primeiro (estável)
+    secEntries.forEach(e=>grid.appendChild(sectorCardEl(e.sid,e.name,e.editable)));
     {
       const tile=el(`<button class="new-tile">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
