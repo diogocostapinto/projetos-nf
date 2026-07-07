@@ -149,7 +149,9 @@
   .card.p-media{border-left-color:var(--amber)}
   .card.p-baixa{border-left-color:var(--pine)}
   .card-title{font-weight:700;font-size:14.5px;line-height:1.35;margin:0 0 4px;word-break:break-word}
-  .card-desc{font-size:12.8px;color:var(--muted);line-height:1.45;margin:0 0 10px;white-space:pre-wrap;word-break:break-word}
+  .card-desc{font-size:12.8px;color:var(--muted);line-height:1.45;margin:0 0 10px;word-break:break-word;cursor:pointer;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card-desc.expanded{white-space:pre-wrap;overflow:visible}
   .card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .chip{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:11px;font-weight:400;padding:3px 8px;border-radius:6px;
     display:inline-flex;align-items:center;gap:5px;background:var(--chip-bg);color:var(--chip-tx)}
@@ -1000,7 +1002,7 @@
         <button class="check ${done?"done":""}" data-act="check" title="${done?"Reabrir":"Concluir"}">${done?CHECK_SVG:""}</button>
         <h3 class="card-title">${esc(t.title)}</h3>
       </div>
-      ${t.desc?`<p class="card-desc">${esc(t.desc)}</p>`:""}
+      ${t.desc?`<p class="card-desc" title="Clique para expandir/recolher">${esc(t.desc)}</p>`:""}
       <div class="card-foot"><span class="tag-prio p-${t.prio}">${pl}</span>
         <span class="chip ${d.cls}">${d.text}</span>${secTag}
         ${t.created_at?`<span class="chip" title="Criada em ${fmtDate(t.created_at)}">🕐 ${ageStr(t.created_at)}</span>`:""}
@@ -1009,6 +1011,8 @@
     card.addEventListener("dragstart",e=>{e.dataTransfer.setData("text/plain",t.id);card.classList.add("dragging");});
     card.addEventListener("dragend",()=>card.classList.remove("dragging"));
     card.querySelector('[data-act="check"]').addEventListener("click",e=>{e.stopPropagation();toggleDone(t);});
+    const desc=card.querySelector(".card-desc");
+    if(desc) desc.addEventListener("click",e=>{e.stopPropagation();desc.classList.toggle("expanded");});
     if(mine){
       card.querySelector('[data-act="edit"]').addEventListener("click",()=>openTask(t.id));
     }
