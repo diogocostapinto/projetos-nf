@@ -786,7 +786,9 @@
       {status:"concluido",label:"Concluídos"}
     ];
     groups.forEach(g=>{
-      const items=list.filter(p=>p.status===g.status);
+      const hasMyPend=p=>me && tasksOf(p.id).some(t=>t.operator_id===me.id && t.col!=="done");
+      const items=list.filter(p=>p.status===g.status)
+        .sort((a,b)=>(hasMyPend(b)?1:0)-(hasMyPend(a)?1:0)); // pendências minhas primeiro (ordem estável mantém sort_order)
       if(g.status!=="ativo" && !items.length) return;
       const collapsed=!!ui.collapsed[g.status];
       const sec=el(`<div class="proj-section"><button class="group-head" aria-expanded="${!collapsed}">
