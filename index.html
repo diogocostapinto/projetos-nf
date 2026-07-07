@@ -394,7 +394,7 @@
     <div class="tabs" id="tabs">
       <button class="tab" data-view="projects">Projetos</button>
       <button class="tab" data-view="dev">Desenvolvimento</button>
-      <button class="tab" data-view="agenda">Agenda<span class="tab-badge" id="badge-agenda" style="display:none"></span></button>
+      <button class="tab" data-view="agenda">Agenda</button>
     </div>
     <div class="toolbar">
       <button class="btn sm ghost" id="btn-theme" title="Alternar tema claro/escuro" aria-label="Alternar tema"></button>
@@ -717,8 +717,6 @@
       ? ((projById(state.projectId)||{}).kind==="dev"?"dev":"projects")
       : state.view;
     document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.view===activeTab));
-    const late=lateCount(data.tasks), badge=document.getElementById("badge-agenda");
-    if(badge){ badge.textContent=late; badge.style.display=late?"inline-grid":"none"; }
     const nnew=myNewTasks().length, ib=document.getElementById("badge-inbox");
     if(ib){ ib.textContent=nnew; ib.style.display=nnew?"inline-grid":"none"; }
     viewEl.innerHTML="";
