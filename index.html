@@ -89,6 +89,10 @@
   .proj-about{color:var(--muted);font-size:14px;line-height:1.55;margin:-8px 0 20px;max-width:760px;white-space:pre-wrap;word-break:break-word}
   .proj-about a{color:var(--pine-deep);font-weight:700;text-decoration:underline;text-underline-offset:2px}
   .crumb{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-bottom:14px}
+  .board-filter{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13px;color:var(--muted)}
+  .board-filter select{border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-family:inherit;font-size:13px;
+    color:var(--ink);background:var(--input-bg)}
+  .board-filter select:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,111,94,.14)}
   .crumb a{color:var(--pine-deep);font-weight:700;text-decoration:none;cursor:pointer}
   .crumb a:hover{text-decoration:underline}
 
@@ -457,7 +461,7 @@
   // ---------- state ----------
   let sb=null, session=null, me=null;
   let data={profiles:[],projects:[],tasks:[],access:[]};
-  let state={view:"projects",projectId:null,sector:"overview",filterProject:"all",filterOperator:"all",filterPrio:"all",filterSector:"all",agendaView:"list",agendaMonth:null};
+  let state={view:"projects",projectId:null,sector:"overview",filterProject:"all",filterOperator:"all",filterPrio:"all",filterSector:"all",agendaView:"list",agendaMonth:null,boardOperator:"all"};
   let modal={type:null,id:null,ctx:null,color:null};
   let authMode="login";
 
@@ -885,10 +889,25 @@
 
     if(state.sector==="overview"){ renderSectorOverview(root,p); return; }
 
+    if(state.boardOperator!=="all" && state.boardOperator!=="me"
+       && !data.profiles.find(u=>u.id===state.boardOperator)) state.boardOperator="all";
+    const opFilter = t => state.boardOperator==="all" ? true
+      : state.boardOperator==="me" ? (me && t.operator_id===me.id)
+      : t.operator_id===state.boardOperator;
+    const fbar=el(`<div class="board-filter">
+      <label>Ver tarefas de</label>
+      <select id="board-op">
+        <option value="all" ${state.boardOperator==="all"?"selected":""}>Todas as pessoas</option>
+        <option value="me" ${state.boardOperator==="me"?"selected":""}>Minhas tarefas</option>
+        ${activeProfiles().filter(u=>!me||u.id!==me.id).map(u=>`<option value="${u.id}" ${state.boardOperator===u.id?"selected":""}>${esc(u.name)}</option>`).join("")}
+      </select></div>`);
+    fbar.querySelector("#board-op").addEventListener("change",e=>{state.boardOperator=e.target.value;render();});
+    root.appendChild(fbar);
+
     const showSector = state.sector==="all" && hasSubs;
     const board=el(`<div class="board"></div>`);
     STAGES.forEach(s=>{
-      const items=sortTasks(sectorTasks(p).filter(t=>t.col===s.id));
+      const items=sortTasks(sectorTasks(p).filter(t=>t.col===s.id).filter(opFilter));
       const col=el(`<section class="col" data-col="${s.id}">
         <div class="col-head"><span class="dot" style="background:${s.color}"></span>
           <span class="col-title">${s.title}</span><span class="count">${items.length}</span></div>
