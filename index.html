@@ -923,15 +923,25 @@
       const next=ts.filter(t=>t.col!=="done"&&t.due).sort((a,b)=>a.due<b.due?-1:1)[0];
       const nd=next?dueInfo(next.due):null;
       const late=lateCount(ts);
+      const mine=me?ts.filter(t=>t.operator_id===me.id):[];
+      const myDone=mine.filter(t=>t.col==="done").length;
+      const myPend=mine.length-myDone;
+      const myPct=mine.length?Math.round(myDone/mine.length*100):0;
       const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
         ${editable?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
-        <div class="proj-top"><h3 class="proj-name">${esc(name)}</h3></div>
+        <div class="proj-top"><h3 class="proj-name">${esc(name)}</h3>
+          ${myPend?`<span class="mine-badge" title="${myPend} tarefa(s) sua(s) pendente(s) neste setor">${myPend}</span>`:""}</div>
         <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
         <div class="proj-meta"><span>${done}/${ts.length} concluídas</span>
           <span style="display:flex;gap:6px">
           ${late?`<span class="chip due-late">${late} atrasada${late>1?"s":""}</span>`:""}
           ${nd?`<span class="chip ${nd.cls}">próx.: ${nd.text}</span>`:`<span class="chip">sem prazos</span>`}
           </span></div>
+        ${mine.length?`<div class="bar mine"><i style="width:${myPct}%"></i></div>
+        <div class="proj-meta">
+          <span class="mine-label">minhas: ${myDone}/${mine.length} (${myPct}%)</span>
+          ${myPend?`<span class="chip due-late">${myPend} p/ você</span>`:`<span class="chip due-ok">tudo feito</span>`}
+        </div>`:""}
       </div>`);
       c.addEventListener("click",e=>{ if(e.target.closest("[data-edit]")){openSector(p.id,sid);return;} state.sector=sid;render(); });
       return c;
