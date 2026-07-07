@@ -876,24 +876,21 @@
 
     if(p.desc&&p.desc.trim()) root.appendChild(el(`<p class="proj-about">${linkify(p.desc)}</p>`));
 
-    const bar=el(`<div class="sector-bar"></div>`);
     const chip=(label,key)=>{
       const b=el(`<button class="sector-chip ${state.sector===key?"active":""}">${label}</button>`);
       b.addEventListener("click",()=>{state.sector=key;render();});
       return b;
     };
     if(hasSubs){
-      bar.appendChild(chip("Visão geral","overview"));
-      bar.appendChild(chip("Todas as tarefas","all"));
-      p.subprojects.forEach(s=>bar.appendChild(chip(esc(s.name),s.id)));
-      if(tasksOf(p.id).some(t=>!t.subprojectId)) bar.appendChild(chip("Sem setor","none"));
+      const navBar=el(`<div class="sector-bar" style="margin-bottom:8px"></div>`);
+      navBar.appendChild(chip("Visão geral","overview"));
+      navBar.appendChild(chip("Todas as tarefas","all"));
+      root.appendChild(navBar);
+      const secBar=el(`<div class="sector-bar"></div>`);
+      p.subprojects.forEach(s=>secBar.appendChild(chip(esc(s.name),s.id)));
+      if(tasksOf(p.id).some(t=>!t.subprojectId)) secBar.appendChild(chip("Sem setor","none"));
+      if(secBar.children.length) root.appendChild(secBar);
     }
-    {
-      const addSec=el(`<button class="sector-chip add" title="Criar setor">＋ Setor</button>`);
-      addSec.addEventListener("click",()=>openSector(p.id,null));
-      bar.appendChild(addSec);
-    }
-    if(bar.children.length) root.appendChild(bar);
 
     if(state.sector==="overview"){ renderSectorOverview(root,p); return; }
 
