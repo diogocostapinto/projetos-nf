@@ -76,15 +76,6 @@ create table if not exists public.task_acks (
   primary key (task_id, profile_id)
 );
 
--- ---------- Log da tarefa (anotações de evolução pelos operadores) ----------
-create table if not exists public.task_logs (
-  id uuid primary key default gen_random_uuid(),
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  author_id uuid references public.profiles(id) on delete set null,
-  body text not null,
-  created_at timestamptz not null default now()
-);
-
 -- ---------- Tarefas ----------
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
@@ -165,22 +156,6 @@ alter table public.projects       enable row level security;
 alter table public.tasks          enable row level security;
 alter table public.project_access enable row level security;
 alter table public.task_acks      enable row level security;
-alter table public.task_logs      enable row level security;
-
--- Log da tarefa: quem vê o projeto lê; aprovado que vê escreve (como
--- autor); autor ou admin apaga
-drop policy if exists task_logs_select on public.task_logs;
-create policy task_logs_select on public.task_logs
-  for select to authenticated using (
-    exists (select 1 from public.tasks t where t.id = task_id and public.can_view_project(t.project_id)));
-drop policy if exists task_logs_insert on public.task_logs;
-create policy task_logs_insert on public.task_logs
-  for insert to authenticated with check (
-    author_id = auth.uid() and public.is_approved()
-    and exists (select 1 from public.tasks t where t.id = task_id and public.can_view_project(t.project_id)));
-drop policy if exists task_logs_delete on public.task_logs;
-create policy task_logs_delete on public.task_logs
-  for delete to authenticated using (author_id = auth.uid() or public.is_admin());
 
 -- Confirmações de recebimento: cada um lê e gerencia apenas as suas
 drop policy if exists task_acks_select on public.task_acks;
@@ -318,9 +293,6 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.task_acks;
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter publication supabase_realtime add table public.task_logs;
 exception when duplicate_object then null; end $$;
 
 -- ============================================================
