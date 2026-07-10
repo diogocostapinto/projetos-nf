@@ -196,10 +196,12 @@
   .overlay{position:fixed;inset:0;background:rgba(27,42,37,.38);backdrop-filter:blur(2px);
     display:none;align-items:center;justify-content:center;padding:20px;z-index:40}
   .overlay.open{display:flex}
-  .modal{background:var(--surface);border-radius:16px;width:100%;max-width:460px;box-shadow:var(--shadow-lift);overflow:hidden}
-  .modal-head{padding:18px 22px 4px}
+  .modal{background:var(--surface);border-radius:16px;width:100%;max-width:460px;box-shadow:var(--shadow-lift);overflow:hidden;
+    display:flex;flex-direction:column;max-height:90vh}
+  .modal-head{padding:18px 22px 4px;flex:none}
+  .modal-foot{flex:none}
   .modal-head h2{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:17px;margin:0}
-  .modal-body{padding:14px 22px 6px;display:flex;flex-direction:column;gap:14px}
+  .modal-body{padding:14px 22px 6px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1 1 auto;min-height:0}
   .field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.02em}
   .field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
     font-family:inherit;font-size:14px;color:var(--ink);background:var(--input-bg);transition:.14s}
