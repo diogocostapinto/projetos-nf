@@ -99,12 +99,12 @@
   /* ---------- Projects grid ---------- */
   .proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
   .proj-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);
-    border-top:4px solid var(--pine);padding:18px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:12px;position:relative}
+    border-top:4px solid var(--pine);padding:18px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:12px;position:relative;min-width:0}
   .proj-card.dragging{opacity:.45}
   .proj-card.drop-target{outline:2px dashed var(--pine);outline-offset:3px}
   .proj-card:hover{box-shadow:var(--shadow-lift);transform:translateY(-2px)}
-  .proj-top{display:flex;align-items:flex-start;gap:10px}
-  .proj-name{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-weight:700;font-size:16.5px;margin:0;line-height:1.25;flex:1;word-break:break-word}
+  .proj-top{display:flex;align-items:flex-start;gap:10px;min-width:0}
+  .proj-name{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-weight:700;font-size:16.5px;margin:0;line-height:1.25;flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere}
   .proj-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .status{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap}
   .status.ativo{background:var(--st-ativo-bg);color:var(--st-ativo-tx)}
@@ -142,7 +142,7 @@
   .col-body{padding:4px 12px 14px;display:flex;flex-direction:column;gap:10px;min-height:60px}
 
   .card{background:var(--surface);border-radius:10px;padding:13px 14px;box-shadow:var(--shadow);
-    border-left:3px solid var(--pine);cursor:grab;transition:.14s;position:relative}
+    border-left:3px solid var(--pine);cursor:grab;transition:.14s;position:relative;min-width:0}
   .card:hover{box-shadow:var(--shadow-lift)}
   .card.dragging{opacity:.4;cursor:grabbing}
   .card.p-alta{border-left-color:var(--clay)}
