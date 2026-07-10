@@ -217,12 +217,13 @@
   #sub-add{align-self:flex-start}
   .lock-tag{font-size:12px;line-height:1;flex:none}
   .switch-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;cursor:pointer;user-select:none}
-  .switch-row input{display:none}
+  .switch-row input,.tgl input{display:none}
+  .tgl{display:inline-flex;align-items:center;gap:6px;flex:none;cursor:pointer;user-select:none}
   .switch{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:background .15s}
   .switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
-  .switch-row input:checked+.switch{background:var(--pine)}
-  .switch-row input:checked+.switch::after{left:19px}
-  .switch-row input:disabled+.switch{opacity:.55}
+  input:checked+.switch{background:var(--pine)}
+  input:checked+.switch::after{left:19px}
+  input:disabled+.switch{opacity:.55}
   .switch-row input:disabled~*{cursor:default}
   .switch-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
   .switch-txt b{font-size:13px}
@@ -1303,7 +1304,7 @@
     const box=mBody.querySelector("#proj-sectors"); if(!box) return;
     box.innerHTML=modal.subs.map(s=>`<div class="sub-row" data-sub-id="${s.id}">
         <input class="sub-name" type="text" maxlength="60" value="${esc(s.name)}" placeholder="Nome do setor">
-        ${isAdmin()?`<label class="sub-priv" title="Setor privado — só admin"><input type="checkbox" class="sub-privchk" ${s.private?"checked":""}>🔒</label>`:""}
+        ${isAdmin()?`<label class="tgl sub-priv" title="Setor privado — só admin"><input type="checkbox" class="sub-privchk" ${s.private?"checked":""}><span class="switch"></span>🔒</label>`:""}
         <button class="icon-btn" type="button" data-sub-del="${s.id}" title="Excluir setor">✕</button>
       </div>`).join("")
       +`<button class="btn sm" type="button" id="sub-add">＋ Adicionar setor</button>`;
@@ -1367,8 +1368,9 @@
           <span>Desligue para liberar projeto a projeto</span></span>
       </label>
       <div id="acc-list" style="${u.access_all?"opacity:.4;pointer-events:none":""}">
-        ${shared.length?shared.map(p=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer">
+        ${shared.length?shared.map(p=>`<label class="tgl" style="display:flex;gap:8px;padding:6px 0;width:100%">
           <input type="checkbox" data-grant="${p.id}" ${grants.has(p.id)?"checked":""}>
+          <span class="switch"></span>
           <span class="dot" style="width:10px;height:10px;background:${p.color}"></span>
           <span>${esc(p.name)}</span></label>`).join(""):`<p class="op-hint">Nenhum projeto de equipe ainda.</p>`}
       </div>
