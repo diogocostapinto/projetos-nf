@@ -131,7 +131,7 @@
 
   /* ---------- Board (project detail) ---------- */
   .board{display:flex;gap:18px;align-items:flex-start;overflow-x:auto;padding-bottom:6px}
-  .col{background:var(--column);border-radius:var(--radius);width:320px;flex:none;display:flex;flex-direction:column;
+  .col{background:var(--column);border-radius:var(--radius);flex:1 1 0;min-width:300px;display:flex;flex-direction:column;
     border:1px solid transparent;transition:.14s}
   .col.drag-over{border-color:var(--pine);background:var(--sel)}
   .col-head{display:flex;align-items:center;gap:9px;padding:14px 15px 10px}
@@ -212,7 +212,10 @@
   .sub-row .sub-name{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-family:inherit;font-size:14px;color:var(--ink);background:var(--input-bg)}
   .sub-row .sub-name:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(0,47,167,.18)}
   .sub-row .icon-btn{flex:none}
+  .sub-priv{flex:none;display:inline-flex;align-items:center;gap:3px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .sub-priv input{cursor:pointer}
   #sub-add{align-self:flex-start}
+  .lock-tag{font-size:12px;line-height:1;flex:none}
   .switch-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;cursor:pointer;user-select:none}
   .switch-row input{display:none}
   .switch{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:background .15s}
@@ -340,7 +343,7 @@
     /* quadro: uma coluna por "página", swipe lateral com snap */
     .board{gap:12px;margin:0 -14px;padding:0 14px 6px;
       scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
-    .col{width:84vw;scroll-snap-align:start}
+    .col{flex:none;width:84vw;min-width:0;scroll-snap-align:start}
     .row{flex-direction:column;gap:14px}
     .filters{gap:10px}
     .filter{flex:1 1 46%}
@@ -361,7 +364,7 @@
     .cal-title{min-width:0;flex:1}
   }
   @media (max-width:400px){
-    .col{width:92vw}
+    .col{flex:none;width:92vw;min-width:0}
     .filter{flex:1 1 100%}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -506,8 +509,17 @@
   function dbErr(e){ if(e){ toast(e.message&&/policy|denied|permission/i.test(e.message)?"Sem permissão para essa ação":"Erro ao salvar"); console.error(e); return true; } return false; }
 
   // ---------- helpers ----------
-  const tasksOf = pid => data.tasks.filter(t=>t.projectId===pid);
   const projById = pid => data.projects.find(p=>p.id===pid);
+  // setores visíveis ao usuário atual (privados só para admin)
+  const visSubs = p => !p ? [] : (isAdmin() ? (p.subprojects||[]) : (p.subprojects||[]).filter(s=>!s.private));
+  // tarefas do projeto visíveis ao usuário (esconde as de setores privados p/ não-admin)
+  const tasksOf = pid => {
+    const list=data.tasks.filter(t=>t.projectId===pid);
+    if(isAdmin()) return list;
+    const p=projById(pid); if(!p) return list;
+    const priv=new Set((p.subprojects||[]).filter(s=>s.private).map(s=>s.id));
+    return priv.size?list.filter(t=>!priv.has(t.subprojectId)):list;
+  };
   const subById = (p,sid) => (p&&p.subprojects||[]).find(s=>s.id===sid);
   function sectorName(p,sid){ const s=subById(p,sid); return s?s.name:(sid?"?":"Sem setor"); }
   function initials(name){ return String(name||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase(); }
@@ -709,7 +721,7 @@
   function openProjectView(pid){
     const p=projById(pid);
     state.projectId=pid;
-    state.sector=(p&&p.subprojects&&p.subprojects.length)?"overview":"all";
+    state.sector=(visSubs(p).length)?"overview":"all";
     state.view="project"; render();
   }
   function setView(v,pid){ state.view=v; if(pid!==undefined) state.projectId=pid; render(); }
@@ -747,13 +759,14 @@
       ${isAdmin()?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
       <div class="proj-top">
         <h3 class="proj-name">${esc(p.name)}</h3>
+        ${p.private?`<span class="lock-tag" title="Privado — só admin vê">🔒</span>`:""}
         ${myPend?`<span class="mine-badge" title="${myPend} tarefa(s) sua(s) pendente(s) neste projeto">${myPend}</span>`:""}
         <span class="status ${p.status}">${{ativo:"Ativo",pausado:"Pausado",concluido:"Concluído"}[p.status]}</span>
       </div>
       ${p.desc?`<p class="proj-desc" title="${esc(p.desc)}">${esc(p.desc)}</p>`:""}
       <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
       <div class="proj-meta">
-        <span>${done}/${ts.length} concluídas${p.subprojects.length?` · ${p.subprojects.length} setor(es)`:""}</span>
+        <span>${done}/${ts.length} concluídas${visSubs(p).length?` · ${visSubs(p).length} setor(es)`:""}</span>
         <span style="display:flex;gap:6px">
         ${late?`<span class="chip due-late">${late} atrasada${late>1?"s":""}</span>`:""}
         ${nd?`<span class="chip ${nd.cls}">próx.: ${nd.text}</span>`:`<span class="chip">sem prazos</span>`}
@@ -773,7 +786,7 @@
 
   function renderProjectList(root,kind){
     const isDev=kind==="dev";
-    const list=data.projects.filter(p=>(p.kind||"normal")===kind);
+    const list=data.projects.filter(p=>(p.kind||"normal")===kind && (isAdmin()||!p.private));
     const listIds=new Set(list.map(p=>p.id));
     const listTasks=data.tasks.filter(t=>listIds.has(t.projectId));
     const pend=listTasks.filter(t=>t.col!=="done").length;
@@ -851,7 +864,7 @@
   function renderBoard(root){
     const p=projById(state.projectId);
     if(!p){ setView("projects"); return; }
-    const hasSubs=p.subprojects.length>0;
+    const hasSubs=visSubs(p).length>0;
 
     const fromDev=p.kind==="dev";
     let crumb=`<a id="back">← ${fromDev?"Desenvolvimento":"Projetos"}</a> / `;
@@ -887,7 +900,7 @@
       navBar.appendChild(chip("Todas as tarefas","all"));
       root.appendChild(navBar);
       const secBar=el(`<div class="sector-bar"></div>`);
-      p.subprojects.forEach(s=>secBar.appendChild(chip(esc(s.name),s.id)));
+      visSubs(p).forEach(s=>secBar.appendChild(chip((s.private?"🔒 ":"")+esc(s.name),s.id)));
       if(tasksOf(p.id).some(t=>!t.subprojectId)) secBar.appendChild(chip("Sem setor","none"));
       if(secBar.children.length) root.appendChild(secBar);
     }
@@ -941,7 +954,7 @@
   function renderSectorOverview(root,p){
     root.appendChild(el(`<p class="op-hint" style="margin-bottom:14px">Visão global por setor. Clique em um setor para abrir seu quadro.</p>`));
     const grid=el(`<div class="proj-grid"></div>`);
-    const sectorCardEl=(sid,name,editable)=>{
+    const sectorCardEl=(sid,name,editable,priv)=>{
       const ts = sid==="none"?tasksOf(p.id).filter(t=>!t.subprojectId):tasksOf(p.id).filter(t=>t.subprojectId===sid);
       const done=ts.filter(t=>t.col==="done").length, pct=ts.length?Math.round(done/ts.length*100):0;
       const next=ts.filter(t=>t.col!=="done"&&t.due).sort((a,b)=>a.due<b.due?-1:1)[0];
@@ -954,6 +967,7 @@
       const c=el(`<div class="proj-card" style="border-top-color:${p.color}">
         ${editable?`<button class="btn ghost sm proj-edit" data-edit>✎</button>`:""}
         <div class="proj-top"><h3 class="proj-name">${esc(name)}</h3>
+          ${priv?`<span class="lock-tag" title="Setor privado — só admin vê">🔒</span>`:""}
           ${myPend?`<span class="mine-badge" title="${myPend} tarefa(s) sua(s) pendente(s) neste setor">${myPend}</span>`:""}</div>
         <div class="bar"><i style="width:${pct}%;background:${p.color}"></i></div>
         <div class="proj-meta"><span>${done}/${ts.length} concluídas</span>
@@ -970,12 +984,12 @@
       c.addEventListener("click",e=>{ if(e.target.closest("[data-edit]")){openSector(p.id,sid);return;} state.sector=sid;render(); });
       return c;
     };
-    const secEntries=p.subprojects.map(s=>({sid:s.id,name:s.name,editable:true}));
+    const secEntries=visSubs(p).map(s=>({sid:s.id,name:s.name,editable:true,private:!!s.private}));
     if(tasksOf(p.id).some(t=>!t.subprojectId)) secEntries.push({sid:"none",name:"Sem setor",editable:false});
     const secHasMyPend=sid=>me && tasksOf(p.id).some(t=>
       (sid==="none"?!t.subprojectId:t.subprojectId===sid) && t.operator_id===me.id && t.col!=="done");
     secEntries.sort((a,b)=>(secHasMyPend(b.sid)?1:0)-(secHasMyPend(a.sid)?1:0)); // pendências minhas primeiro (estável)
-    secEntries.forEach(e=>grid.appendChild(sectorCardEl(e.sid,e.name,e.editable)));
+    secEntries.forEach(e=>grid.appendChild(sectorCardEl(e.sid,e.name,e.editable,e.private)));
     {
       const tile=el(`<button class="new-tile">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -1057,10 +1071,10 @@
     if(state.filterProject==="all"||isKindFilter(state.filterProject)){
       const k=state.filterProject==="kind:dev"?"dev":state.filterProject==="kind:normal"?"normal":null;
       data.projects.filter(p=>!k||(p.kind||"normal")===k)
-        .forEach(p=>p.subprojects.forEach(s=>secOpts.push({id:s.id,label:`${p.name} › ${s.name}`})));
+        .forEach(p=>visSubs(p).forEach(s=>secOpts.push({id:s.id,label:`${p.name} › ${s.name}`})));
     }else{
       const p=projById(state.filterProject);
-      (p?p.subprojects:[]).forEach(s=>secOpts.push({id:s.id,label:s.name}));
+      visSubs(p).forEach(s=>secOpts.push({id:s.id,label:s.name}));
     }
     const secIds=secOpts.map(o=>o.id);
     if(state.filterSector!=="all"&&state.filterSector!=="none"&&!secIds.includes(state.filterSector)) state.filterSector="all";
@@ -1201,9 +1215,9 @@
 
   function sectorOptions(projectId,selected){
     const p=projById(projectId);
-    const subs=(p&&p.subprojects)||[];
+    const subs=visSubs(p);
     return `<option value="" ${!selected?"selected":""}>— Sem setor —</option>`+
-      subs.map(s=>`<option value="${s.id}" ${s.id===selected?"selected":""}>${esc(s.name)}</option>`).join("");
+      subs.map(s=>`<option value="${s.id}" ${s.id===selected?"selected":""}>${(s.private?"🔒 ":"")+esc(s.name)}</option>`).join("");
   }
 
   function openTask(id,ctx){
@@ -1271,6 +1285,7 @@
         <div class="field"><label>Cor ${id?"":"(automática)"}</label>
           <div class="color-pick"><span class="color-dot" id="f-color" style="background:${modal.color}"></span></div></div>
       </div>
+      ${isAdmin()?`<label class="switch-row"><input type="checkbox" id="f-priv" ${p.private?"checked":""}><span class="switch"></span><span class="switch-txt"><b>🔒 Projeto privado</b><span>Só administradores veem este projeto</span></span></label>`:""}
       <div class="field"><label>Setores</label><div id="proj-sectors" class="sub-editor"></div></div>`;
     renderProjectSectors();
     btnDelete.style.display=id?"block":"none";
@@ -1279,14 +1294,16 @@
 
   function syncSubInputs(){
     mBody.querySelectorAll(".sub-row").forEach(r=>{
-      const s=modal.subs.find(x=>x.id===r.dataset.subId), inp=r.querySelector(".sub-name");
-      if(s&&inp) s.name=inp.value;
+      const s=modal.subs.find(x=>x.id===r.dataset.subId); if(!s) return;
+      const inp=r.querySelector(".sub-name"); if(inp) s.name=inp.value;
+      const chk=r.querySelector(".sub-privchk"); if(chk) s.private=chk.checked;
     });
   }
   function renderProjectSectors(){
     const box=mBody.querySelector("#proj-sectors"); if(!box) return;
     box.innerHTML=modal.subs.map(s=>`<div class="sub-row" data-sub-id="${s.id}">
         <input class="sub-name" type="text" maxlength="60" value="${esc(s.name)}" placeholder="Nome do setor">
+        ${isAdmin()?`<label class="sub-priv" title="Setor privado — só admin"><input type="checkbox" class="sub-privchk" ${s.private?"checked":""}>🔒</label>`:""}
         <button class="icon-btn" type="button" data-sub-del="${s.id}" title="Excluir setor">✕</button>
       </div>`).join("")
       +`<button class="btn sm" type="button" id="sub-add">＋ Adicionar setor</button>`;
@@ -1421,9 +1438,10 @@
     const name=document.getElementById("f-name").value.trim();
     if(!name){toast("Dê um nome ao projeto");return;}
     syncSubInputs();
-    const subs=modal.subs.map(s=>({id:s.id,name:s.name.trim()})).filter(s=>s.name);
+    const subs=modal.subs.map(s=>({id:s.id,name:s.name.trim(),private:!!s.private})).filter(s=>s.name);
     const fields={name,description:document.getElementById("f-pdesc").value.trim(),
       status:document.getElementById("f-status").value,color:modal.color,subprojects:subs};
+    { const pv=document.getElementById("f-priv"); if(pv) fields.private=pv.checked; }
     let error;
     if(modal.id){ ({error}=await sb.from("projects").update(fields).eq("id",modal.id)); }
     else{ ({error}=await sb.from("projects").insert({...fields,sort_order:data.projects.length,kind:modal.kind||"normal",owner_id:me.id})); }

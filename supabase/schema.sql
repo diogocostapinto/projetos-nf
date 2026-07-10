@@ -50,6 +50,7 @@ create table if not exists public.projects (
   sort_order int not null default 0,
   kind text not null default 'normal' check (kind in ('normal','dev')),
   owner_id uuid references public.profiles(id) on delete set null,
+  private boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -57,6 +58,7 @@ create table if not exists public.projects (
 alter table public.projects add column if not exists sort_order int not null default 0;
 alter table public.projects add column if not exists kind text not null default 'normal' check (kind in ('normal','dev'));
 alter table public.projects add column if not exists owner_id uuid references public.profiles(id) on delete set null;
+alter table public.projects add column if not exists private boolean not null default false;
 
 
 -- ---------- Acesso por projeto (quando o operador não vê "todos") ----------
@@ -104,18 +106,31 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ---------- Função auxiliar: usuário atual pode VER este projeto? ----------
--- Admin vê tudo; os demais precisam de aprovação e escopo
--- (vê todos, tem liberação específica em project_access, ou é o criador).
+-- Admin vê tudo; os demais precisam de aprovação, escopo e o projeto
+-- NÃO ser privado (privado = só admin).
 create or replace function public.can_view_project(pid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin()
-      or ( public.is_approved() and (
-             exists (select 1 from public.profiles pr where pr.id = auth.uid() and pr.access_all)
-          or exists (select 1 from public.project_access a
-                     where a.project_id = pid and a.profile_id = auth.uid())
-          or exists (select 1 from public.projects p
-                     where p.id = pid and p.owner_id = auth.uid())
-      ));
+      or ( public.is_approved()
+           and exists (select 1 from public.projects p where p.id = pid and not p.private)
+           and (
+                exists (select 1 from public.profiles pr where pr.id = auth.uid() and pr.access_all)
+             or exists (select 1 from public.project_access a
+                        where a.project_id = pid and a.profile_id = auth.uid())
+             or exists (select 1 from public.projects p
+                        where p.id = pid and p.owner_id = auth.uid())
+           ));
+$$;
+
+-- ---------- Função auxiliar: usuário atual pode VER esta tarefa? ----------
+-- Vê o projeto E o setor (quando houver) não é privado.
+create or replace function public.can_see_task(pid uuid, sid text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.can_view_project(pid) and (
+    sid is null or sid = '' or not coalesce((
+      select (s->>'private')::boolean
+      from public.projects p2, jsonb_array_elements(p2.subprojects) s
+      where p2.id = pid and s->>'id' = sid), false));
 $$;
 
 
@@ -142,13 +157,10 @@ create trigger protect_profile_fields
   before update on public.profiles
   for each row execute function public.protect_profile_fields();
 
--- ---------- Limpeza da antiga lógica de projeto privado ----------
--- (ordem importa: políticas dependem das colunas, então saem antes)
+-- ---------- Limpeza de políticas/funções antigas (idempotência) ----------
 drop policy if exists projects_owner_private on public.projects;
 drop policy if exists tasks_private_owner on public.tasks;
 drop function if exists public.owns_private_project(uuid);
-alter table public.projects drop column if exists private;
-alter table public.projects drop column if exists owner_id;
 
 -- ---------- Row Level Security ----------
 alter table public.profiles       enable row level security;
@@ -246,7 +258,7 @@ create policy project_access_admin_write on public.project_access
 -- só mudam a situação/coluna). Excluir é só admin.
 drop policy if exists tasks_select on public.tasks;
 create policy tasks_select on public.tasks
-  for select to authenticated using (public.can_view_project(project_id));
+  for select to authenticated using (public.can_see_task(project_id, subproject_id));
 
 drop policy if exists tasks_admin_all on public.tasks;
 create policy tasks_admin_all on public.tasks
